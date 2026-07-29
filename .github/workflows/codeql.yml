@@ -20,17 +20,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ["javascript", "php"]
+        # CodeQL does not support PHP. This only covers the JavaScript side;
+        # PHP security coverage comes from the phpcs-security job in code-review.yml instead.
+        language: ["javascript"]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
