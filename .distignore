@@ -1,0 +1,31 @@
+# Files and directories omitted from customer release ZIPs (see bin/build.sh).
+# Patterns are relative to the plugin root; used by the release script (rsync --exclude).
+
+# Version control & IDE
+.git
+.github
+.gitignore
+.distignore
+.editorconfig
+.idea
+.cursor
+.DS_Store
+
+# Dependencies (not used in this repo yet; safe to list)
+node_modules
+vendor
+
+# Dev tooling & internal docs
+releases
+bin
+phpcs.xml
+docs/PLAN-*.md
+AGENTS.md
+CONTRIBUTING.md
+SECURITY.md
+
+# Tests (if added later)
+tests
+phpunit.xml
+phpunit.xml.dist
+phpcs.xml.dist

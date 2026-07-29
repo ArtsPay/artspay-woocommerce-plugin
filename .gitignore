@@ -1,0 +1,19 @@
+.DS_Store
+.idea
+.vscode
+.cursor
+
+# Dependencies (not used in this repo yet; safe to ignore if ever added)
+node_modules/
+vendor/
+
+# Env files (none used yet; ignored defensively)
+.env
+.env.*
+
+# Internal planning docs — excluded from the customer ZIP via .distignore,
+# but this also keeps them out of the (public) git history entirely.
+docs/PLAN-*.md
+
+# Release artifacts (see bin/build.sh)
+releases/

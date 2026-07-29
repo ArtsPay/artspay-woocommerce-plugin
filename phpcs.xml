@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<ruleset name="WooCommerce ArtsPay Gateway">
+    <description>Security-focused PHPCS ruleset for the ArtsPay WooCommerce gateway.</description>
+
+    <!-- What to scan -->
+    <file>.</file>
+
+    <!-- Exclude paths -->
+    <exclude-pattern>/vendor/*</exclude-pattern>
+    <exclude-pattern>/node_modules/*</exclude-pattern>
+    <exclude-pattern>/releases/*</exclude-pattern>
+    <exclude-pattern>*.min.js</exclude-pattern>
+    <exclude-pattern>*.min.css</exclude-pattern>
+
+    <!-- How to scan -->
+    <arg value="sp"/> <!-- Show sniff and progress -->
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg name="parallel" value="8"/>
+
+    <!-- Security-focused rules (payment gateway code — these are the sniffs that matter) -->
+    <rule ref="WordPress.Security.EscapeOutput">
+        <type>error</type>
+    </rule>
+    <rule ref="WordPress.Security.NonceVerification">
+        <type>error</type>
+    </rule>
+    <rule ref="WordPress.Security.ValidatedSanitizedInput">
+        <type>error</type>
+    </rule>
+    <rule ref="WordPress.DB.PreparedSQL">
+        <type>error</type>
+    </rule>
+    <rule ref="WordPress.DB.PreparedSQLPlaceholders">
+        <type>error</type>
+    </rule>
+
+    <!-- PHP Compatibility (matches "Requires PHP" in artspay-woocommerce.php) -->
+    <config name="testVersion" value="8.0-"/>
+
+    <!-- Minimum supported WordPress version (matches "Requires at least" in artspay-woocommerce.php) -->
+    <config name="minimum_wp_version" value="6.0"/>
+</ruleset>
