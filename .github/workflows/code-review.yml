@@ -49,7 +49,10 @@ jobs:
 
       - name: Run PHPCS (security sniffs only)
         run: |
+          # -q and --no-colors override the progress and colour output phpcs.xml turns on,
+          # which would otherwise land in front of the XML and break cs2pr.
           ~/.composer/vendor/bin/phpcs \
             --standard=phpcs.xml \
             --report=checkstyle \
+            -q --no-colors \
             . | cs2pr
