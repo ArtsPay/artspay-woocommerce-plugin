@@ -2,15 +2,18 @@ name: CodeQL
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
   schedule:
     - cron: "34 2 * * 0"
 
 jobs:
   analyze:
     name: Analyze
+    # Code scanning is free on public repos but needs paid Code Security on private ones.
+    # The public mirror (ArtsPay/artspay-woocommerce-plugin) scans the same code.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -26,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

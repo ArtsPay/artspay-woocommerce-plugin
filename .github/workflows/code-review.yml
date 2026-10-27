@@ -2,28 +2,43 @@ name: Code Review
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 jobs:
-  php-syntax:
-    name: PHP Syntax
+  php-syntax-matrix:
+    name: PHP Syntax (${{ matrix.php }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Minimum supported (Requires PHP), recommended, and newest.
+        php: ["8.0", "8.3", "8.5"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.0"
+          php-version: ${{ matrix.php }}
       - run: ./bin/check-php-syntax.sh
+
+  # The main branch ruleset requires a check named "PHP Syntax", so this job
+  # reports one result for the whole matrix above.
+  php-syntax:
+    name: PHP Syntax
+    needs: php-syntax-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.php-syntax-matrix.result }}" = "success"
 
   phpcs-security:
     name: PHP CodeSniffer (WordPress security sniffs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.0"
+          php-version: "8.3"
           tools: cs2pr, phpcs
 
       - name: Install WordPress Coding Standards
@@ -38,4 +53,3 @@ jobs:
             --standard=phpcs.xml \
             --report=checkstyle \
             . | cs2pr
-        continue-on-error: true
