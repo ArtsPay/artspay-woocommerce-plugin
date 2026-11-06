@@ -4,7 +4,7 @@ Guidance for coding agents and contributors working in this repository.
 
 ## Project overview
 
-**WooCommerce ArtsPay Gateway** connects a WooCommerce store to **ArtsPay** / **Fat Zebra** for card processing. The main gateway class handles inline and Direct Post card flows, subscriptions, refunds, optional **Forter** fraud screening, captcha, and (when enabled) **Google Pay** express checkout and Cart/Checkout **Blocks** mounts.
+**WooCommerce ArtsPay Gateway** connects a WooCommerce store to **ArtsPay** / **Fat Zebra** for card processing. The main gateway class handles inline card flows, subscriptions, refunds, optional **Forter** fraud screening, captcha, and (when enabled) **Google Pay** express checkout and Cart/Checkout **Blocks** mounts.
 
 **Requirements:** PHP 8.0+, WordPress and WooCommerce per [`artspay-woocommerce.php`](artspay-woocommerce.php) headers. No Node/npm or Composer toolchain for builds (static JS/CSS only).
 
@@ -50,7 +50,7 @@ flowchart LR
 | `includes/API/` | Fat Zebra API client |
 | `includes/Express/` | Google Pay + Blocks express UI |
 | `includes/Admin/` | Deferred payments admin |
-| `includes/Traits/` | Encryption, utils, captcha helpers |
+| `includes/Traits/` | Encryption, utils, captcha and attempt limit helpers |
 | `assets/js`, `assets/css` | Checkout and admin assets (no bundler) |
 
 ## Task → command matrix
@@ -69,6 +69,7 @@ flowchart LR
 - **WooCommerce not loaded** – Guard with `class_exists( 'WooCommerce' )` or rely on hooks that only run when WooCommerce is active.
 - **SSL** – Live wallet/express flows expect HTTPS; Apple Pay domain verification still usually needs a real HTTPS hostname even in sandbox.
 - **Settings merges** – `CreditCardGateway::process_admin_options()` merges partial saves when using express sub-pages so unrelated options are not wiped; changing this risks clearing `enabled` or merchant credentials.
+- **Direct Post** – Off in code since 3.1.3 (`direct_post_enabled()` returns false) because `fatzebra.js` was never shipped. The rewrite is planned for 3.2. `use_direct_post` and `shared_secret` are preserved on save but hidden.
 - **3.1.0 wallets** – Do not assume `GooglePay` or `Blocks` hooks are registered; confirm `Plugin` / gateway wiring before debugging express checkout.
 
 ## Testing
