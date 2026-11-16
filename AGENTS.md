@@ -68,14 +68,17 @@ flowchart LR
 
 - **WooCommerce not loaded** – Guard with `class_exists( 'WooCommerce' )` or rely on hooks that only run when WooCommerce is active.
 - **SSL** – Live wallet/express flows expect HTTPS; Apple Pay domain verification still usually needs a real HTTPS hostname even in sandbox.
-- **Settings merges** – `CreditCardGateway::process_admin_options()` merges partial saves when using express sub-pages so unrelated options are not wiped; changing this risks clearing `enabled` or merchant credentials.
-- **Direct Post** – Off in code since 3.1.3 (`direct_post_enabled()` returns false) because `fatzebra.js` was never shipped. The rewrite is planned for 3.2. `use_direct_post` and `shared_secret` are preserved on save but hidden.
+- **Settings merges** – `CreditCardGateway::process_admin_options()` merges partial saves from sub-pages (`get_settings_subpages()`: Express checkouts, Forter, 3D Secure, Captcha) so unrelated options are not wiped; changing this risks clearing `enabled` or merchant credentials. New sub-page fields go in that registry.
+- **Order data** – Always through `$order->get_meta()` / `update_meta_data()` / `save()`, never `*_post_meta()`, so it works with HPOS (declared in `artspay-woocommerce.php`). Keep existing meta key names so older orders still read.
+- **References** – Use `new_payment_reference( $order_id )` for every Fat Zebra charge. Fat Zebra rejects a reused reference.
+- **Browser tests** – `tests/e2e` (Playwright, see its README). Run before a release and after checkout, 3DS or settings changes.
 - **3.1.0 wallets** – Do not assume `GooglePay` or `Blocks` hooks are registered; confirm `Plugin` / gateway wiring before debugging express checkout.
 
 ## Testing
 
 - **Manual:** Fat Zebra sandbox credentials, WooCommerce checkout, order-pay, refunds, subscriptions as applicable.
 - **Automated in repo:** PHP syntax check, security-scoped PHPCS (WordPress escaping/nonce/SQL sniffs), and CodeQL — all run in CI (`.github/workflows/`) on every pull request; no PHPUnit suite yet.
+- **Browser (local, not CI):** `tests/e2e` builds a throwaway SQLite store and runs checkout, 3D Secure and settings tests against the Fat Zebra sandbox. See `tests/e2e/README.md`.
 
 ## Release hygiene
 

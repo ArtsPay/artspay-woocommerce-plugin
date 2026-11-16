@@ -16,7 +16,6 @@ use ArtsPay\Express\BlocksApplePay;
 use ArtsPay\Express\GooglePay;
 use ArtsPay\Traits;
 use DateTime;
-use DateTimeZone;
 use Exception;
 use WC_Order;
 use WC_Payment_Gateway_CC;
@@ -32,6 +31,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	use Traits\Utils;
 	use Traits\Captcha;
 	use Traits\AttemptLimits;
+	use Traits\HostedCard;
 
 	/**
 	 * Global settings object.
@@ -109,10 +109,6 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		$this->description        = $this->get_option( 'description' );
 		$this->method_title       = esc_html__( 'ArtsPay', 'artspay' );
 		$this->method_description = esc_html__( 'Accept credit and debit card payments at checkout, with support for express checkout.', 'artspay' );
-
-		if ( $this->direct_post_enabled() ) {
-			$this->supports[] = 'tokenization';
-		}
 
 		$this->has_fields = true;
 
@@ -226,19 +222,11 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 */
 	public function save_device_id_hidden_field( int $order_id ): void {
 		$pmnts_id = filter_input( INPUT_POST, 'pmnts_id', FILTER_UNSAFE_RAW );
-		if ( ! empty( $pmnts_id ) ) {
-			update_post_meta( $order_id, 'device_id', sanitize_text_field( $pmnts_id ) );
+		$order    = wc_get_order( $order_id );
+		if ( ! empty( $pmnts_id ) && $order ) {
+			$order->update_meta_data( 'device_id', sanitize_text_field( $pmnts_id ) );
+			$order->save();
 		}
-	}
-
-	/**
-	 * Indicates if direct post is enabled/configured or not.
-	 *
-	 * @return bool
-	 */
-	private function direct_post_enabled(): bool {
-		// Off until the 3.2 rewrite: fatzebra.js isn't shipped, so no card token is ever created.
-		return false;
 	}
 
 	/**
@@ -278,7 +266,8 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			return;
 		}
 		echo '<div class="notice notice-warning"><p>';
-		echo esc_html__( 'ArtsPay: Forter fraud screening is enabled without device fingerprinting. For stronger results, enable “Enable device fingerprinting” below (and consider loading the fingerprint script site-wide per Fat Zebra’s documentation).', 'artspay' );
+		echo esc_html__( 'ArtsPay: Forter fraud screening is enabled without device fingerprinting. For stronger results, turn on “Enable device fingerprinting” on the Forter settings page (and consider loading the fingerprint script site-wide per Fat Zebra’s documentation).', 'artspay' );
+		echo ' <a href="' . esc_url( $this->get_settings_url( 'forter' ) ) . '">' . esc_html__( 'Open Forter settings', 'artspay' ) . '</a>';
 		echo '</p></div>';
 	}
 
@@ -342,6 +331,15 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			esc_url( $docs_url )
 		);
 
+		if ( $this->is_three_ds_required_for_cart() ) {
+			$message .= ' ' . sprintf(
+				/* translators: 1: 3DS frictionless test Visa, 2: 3DS challenge test Visa */
+				__( '3D Secure: <code class="artspay-test-card">%1$s</code> passes straight through, <code class="artspay-test-card">%2$s</code> shows a bank challenge.', 'artspay' ),
+				'4000 0000 0000 1000',
+				'4000 0000 0000 1091'
+			);
+		}
+
 		echo '<div class="artspay-test-mode-notice" role="status">';
 		echo wp_kses(
 			$message,
@@ -356,23 +354,6 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			)
 		);
 		echo '</div>';
-	}
-
-	/**
-	 * Returns the direct post URL.
-	 *
-	 * @return string
-	 */
-	private function get_direct_post_url(): string {
-		$cc_client = new Client();
-
-		$url = $this->is_sandbox_mode() ? $cc_client->sandbox_url : $cc_client->live_url;
-
-		// Replace the URL with the tokenize method and re-create the order text (json payload).
-		$url = str_replace( 'purchases', 'credit_cards', $url );
-		$url = str_replace( 'v1.0', 'v2', $url );
-
-		return $url . '/direct/' . $this->get_gateway_credentials()['username'] . '.json';
 	}
 
 	/**
@@ -402,7 +383,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 							),
 						)
 					),
-					esc_url( 'https://artspay.notion.site/Test-Card-Numbers-92e018932f684000b36f7c322489a1d3' )
+					esc_url( 'https://www.artspay.com/docs/developer/testing/test-card-numbers' )
 				),
 				'default'     => 'yes',
 			),
@@ -439,14 +420,22 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			'shared_secret'      => array(
 				'title'       => esc_html__( 'Gateway Shared Secret', 'artspay' ),
 				'type'        => 'text',
-				'description' => esc_html__( 'The Gateway Shared Secret. Required for Direct Post.', 'artspay' ),
+				'description' => esc_html__( 'Fat Zebra\'s shared secret (PayNow secret) for your merchant account. Required for the secure hosted card form and 3D Secure.', 'artspay' ),
 				'default'     => '033bd94b11',
+				'custom_attributes' => array(
+					'autocomplete'  => 'off',
+					'data-lpignore' => 'true',
+				),
 			),
-			'use_direct_post'    => array(
-				'title'       => esc_html__( 'Use Direct Post', 'artspay' ),
-				'type'        => 'checkbox',
-				'description' => esc_html__( 'Uses the Direct Post method for payments which prevents card data from being sent to your web server.', 'artspay' ),
-				'default'     => 'no',
+			'card_form'          => array(
+				'title'       => esc_html__( 'Card form', 'artspay' ),
+				'type'        => 'select',
+				'description' => esc_html__( 'On-site: card fields sit in your checkout and card details pass through your web server. Secure hosted form: Fat Zebra\'s card form loads inside your checkout, so card numbers go straight to Fat Zebra and never reach your server. The hosted form is required for 3D Secure.', 'artspay' ),
+				'default'     => 'onsite',
+				'options'     => array(
+					'onsite' => esc_html__( 'On-site card form', 'artspay' ),
+					'hosted' => esc_html__( 'Secure hosted form (Fat Zebra)', 'artspay' ),
+				),
 			),
 			'deferred_payments'  => array(
 				'title'       => esc_html__( 'Enable Deferred Payments', 'artspay' ),
@@ -544,6 +533,36 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'label'       => esc_html__( 'Notify the site administrator when a transaction is declined with a Forter result of Deny', 'artspay' ),
 				'description' => esc_html__( 'Sends one email to the WordPress admin address.', 'artspay' ),
 				'default'     => 'no',
+			),
+			'three_ds_enabled'   => array(
+				'title'       => esc_html__( 'Enable 3D Secure', 'artspay' ),
+				'type'        => 'checkbox',
+				'label'       => esc_html__( 'Ask the card issuer to verify the cardholder before each card payment', 'artspay' ),
+				'description' => esc_html__( 'Most customers pass without noticing. Some banks ask for a one-time code or app approval. Payments that fail verification are blocked. Needs the secure hosted card form.', 'artspay' ),
+				'default'     => 'no',
+			),
+			'oauth_access_key'   => array(
+				'title'       => esc_html__( 'OAuth access key', 'artspay' ),
+				'type'        => 'text',
+				'description' => esc_html__( 'From the Fat Zebra Merchant Dashboard: Settings, OAuth Clients, Create new OAuth Client.', 'artspay' ),
+				'default'     => '',
+				'custom_attributes' => array(
+					'autocomplete'  => 'off',
+					'spellcheck'    => 'false',
+					'data-lpignore' => 'true',
+				),
+			),
+			'oauth_access_secret' => array(
+				'title'       => esc_html__( 'OAuth access secret', 'artspay' ),
+				// Plain text for the same reason as the captcha secret key.
+				'type'        => 'text',
+				'description' => esc_html__( 'Shown once when the OAuth client is created, so store it somewhere safe.', 'artspay' ),
+				'default'     => '',
+				'custom_attributes' => array(
+					'autocomplete'  => 'off',
+					'spellcheck'    => 'false',
+					'data-lpignore' => 'true',
+				),
 			),
 			'captcha_enabled'    => array(
 				'title'       => esc_html__( 'Enable Captcha Protection', 'artspay' ),
@@ -719,7 +738,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * @return array<string, array{title: string, description: string, fields: string[], links?: array<int, array{label: string, url: string}>}>
 	 */
 	private function get_gateway_settings_sections(): array {
-		$docs_url    = apply_filters( 'artspay_docs_url', 'https://artspay.notion.site/Payment-Gateway-Guides-7ef95eee075c4e0f917332e6c1ea10ba' );
+		$docs_url    = apply_filters( 'artspay_docs_url', 'https://www.artspay.com/docs/guides/wordpress-woocommerce' );
 		$support_url = apply_filters( 'artspay_support_url', 'https://artspay.com' );
 
 		$general_links = array(
@@ -753,26 +772,102 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 					'show_card_logos',
 					'username',
 					'token',
+					'shared_secret',
 					'deferred_payments',
 				),
 				'links'       => $general_links,
+			),
+			'card_form' => array(
+				'title'       => esc_html__( 'Card form', 'artspay' ),
+				'description' => esc_html__( 'Choose where customers enter their card. With the secure hosted form, card numbers go straight to Fat Zebra, which keeps your store out of most PCI scope (SAQ A).', 'artspay' ),
+				'fields'      => array(
+					'card_form',
+				),
+				'links'       => array(
+					array(
+						'label' => esc_html__( 'Hosted payment pages', 'artspay' ),
+						'url'   => 'https://www.artspay.com/docs/guides/hosted-payment-pages',
+					),
+				),
 			),
 			'express' => array(
 				'title'       => esc_html__( 'Express checkouts', 'artspay' ),
 				'description' => esc_html__( 'Offer Google Pay and Apple Pay on cart and checkout. Open Express checkouts to enable each wallet and set a shared button theme and action.', 'artspay' ),
 				'fields'      => array(),
 			),
-			'fraud'   => array(
-				'title'       => esc_html__( 'Fraud screening', 'artspay' ),
-				'description' => esc_html__( 'Fat Zebra routes fraud screening through Forter. Enable only after ArtsPay or Fat Zebra has activated Forter on your merchant account.', 'artspay' ),
+			'security' => array(
+				'title'       => esc_html__( 'Fraud & security', 'artspay' ),
+				'description' => esc_html__( 'Layer fraud screening, cardholder verification and bot protection. Open each one to switch it on and set it up.', 'artspay' ),
+				'fields'      => array(),
+			),
+			'advanced' => array(
+				'title'       => esc_html__( 'Advanced settings', 'artspay' ),
+				'description' => esc_html__( 'Enable and configure advanced features for your store.', 'artspay' ),
+				'fields'      => array(
+					'debug_mode',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Settings sub-pages, each opened from a row on the main settings screen.
+	 *
+	 * @return array<string, array{title: string, parent: string, fields: string[], description?: string, links?: array<int, array{label: string, url: string}>}>
+	 */
+	private function get_settings_subpages(): array {
+		return array(
+			'express_checkouts' => array(
+				'title'  => esc_html__( 'Express checkouts', 'artspay' ),
+				'parent' => 'artspay-express-checkouts',
+				'fields' => array(
+					'google_pay_enabled',
+					'google_pay_merchant_id',
+					'google_pay_google_merchant_id',
+					'google_pay_button_action',
+					'google_pay_theme',
+					'apple_pay_enabled',
+				),
+			),
+			'forter'            => array(
+				'title'       => esc_html__( 'Forter fraud screening', 'artspay' ),
+				'parent'      => 'artspay-fraud-security',
+				'description' => esc_html__( 'Fat Zebra routes fraud screening through Forter. Each charge is scored Accept, Challenge, Deny or Error, and Deny blocks the payment. Enable only after ArtsPay or Fat Zebra has activated Forter on your merchant account.', 'artspay' ),
 				'fields'      => array(
 					'fraud_data',
 					'fraud_device_id',
 					'fraud_decline_notify',
 				),
+				'links'       => array(
+					array(
+						'label' => esc_html__( 'Fraud screening reference', 'artspay' ),
+						'url'   => 'https://github.com/artspay/artspay-woocommerce-plugin/blob/main/FRAUD.md',
+					),
+				),
 			),
-			'captcha' => array(
+			'three_ds'          => array(
+				'title'       => esc_html__( '3D Secure', 'artspay' ),
+				'parent'      => 'artspay-fraud-security',
+				'description' => esc_html__( '3D Secure asks the customer\'s bank to verify the cardholder before a card payment is charged. When it succeeds, liability for fraudulent chargebacks shifts to the card issuer. ArtsPay must turn on 3D Secure for your merchant account first.', 'artspay' ),
+				'fields'      => array(
+					'three_ds_enabled',
+					'oauth_access_key',
+					'oauth_access_secret',
+				),
+				'links'       => array(
+					array(
+						'label' => esc_html__( '3D Secure guide', 'artspay' ),
+						'url'   => 'https://www.artspay.com/docs/guides/3d-secure',
+					),
+					array(
+						'label' => esc_html__( '3D Secure test cards', 'artspay' ),
+						'url'   => 'https://www.artspay.com/docs/developer/3ds2-integration/testing',
+					),
+				),
+			),
+			'captcha'           => array(
 				'title'       => esc_html__( 'Captcha', 'artspay' ),
+				'parent'      => 'artspay-fraud-security',
 				'description' => esc_html__( 'Optional bot protection on checkout using Google reCAPTCHA v3 or Cloudflare Turnstile before the payment is submitted.', 'artspay' ),
 				'fields'      => array(
 					'captcha_enabled',
@@ -791,48 +886,53 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 					),
 				),
 			),
-			'advanced' => array(
-				'title'       => esc_html__( 'Advanced settings', 'artspay' ),
-				'description' => esc_html__( 'Enable and configure advanced features for your store.', 'artspay' ),
-				'fields'      => array(
-					'debug_mode',
-				),
-			),
 		);
 	}
 
 	/**
-	 * Persist settings; preserve values when saving Express sub-pages.
+	 * Sub-page named in the request, or '' for the main settings screen.
+	 */
+	public function get_current_settings_subpage(): string {
+		// phpcs:disable WordPress.Security.NonceVerification -- Read-only routing; WooCommerce checks the settings nonce on save.
+		$page = '';
+		if ( isset( $_POST['artspay_settings_page'] ) ) {
+			$page = sanitize_key( (string) wp_unslash( $_POST['artspay_settings_page'] ) );
+		} elseif ( isset( $_GET['artspay_page'] ) ) {
+			$page = sanitize_key( (string) wp_unslash( $_GET['artspay_page'] ) );
+		} elseif ( isset( $_GET['artspay_express'] ) ) {
+			// Links from before sub-pages were generalised.
+			$page = 'express_checkouts';
+		}
+		// phpcs:enable WordPress.Security.NonceVerification
+
+		return array_key_exists( $page, $this->get_settings_subpages() ) ? $page : '';
+	}
+
+	/**
+	 * URL of a settings sub-page, or of the main settings screen.
 	 *
-	 * WooCommerce settings API assumes a full settings POST. Our Express checkouts detail pages intentionally
-	 * render only a subset of fields; without protection, missing fields (including `enabled`) are cleared.
+	 * @param string $page Sub-page key, or '' for the main screen.
+	 */
+	public function get_settings_url( string $page = '' ): string {
+		$url = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=fatzebra' );
+
+		return '' === $page ? $url : add_query_arg( 'artspay_page', $page, $url );
+	}
+
+	/**
+	 * Persist settings; preserve values when saving a sub-page.
+	 *
+	 * WooCommerce settings API assumes a full settings POST. Sub-pages intentionally render only a
+	 * subset of fields; without protection, missing fields (including `enabled`) are cleared.
 	 */
 	public function process_admin_options(): void {
 		$existing   = get_option( $this->get_option_key(), array() );
 		$legacy_gw  = isset( $existing['google_pay_gateway_merchant_id'] ) ? trim( (string) $existing['google_pay_gateway_merchant_id'] ) : '';
 		$prev_merch = isset( $existing['google_pay_merchant_id'] ) ? trim( (string) $existing['google_pay_merchant_id'] ) : '';
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$express_page = isset( $_GET['artspay_express'] ) ? sanitize_key( (string) wp_unslash( $_GET['artspay_express'] ) ) : '';
-		// phpcs:disable WordPress.Security.NonceVerification.Missing -- WC gateway settings POST, nonce checked by WooCommerce.
-		if ( isset( $_POST['artspay_express_save_context'] ) ) {
-			$express_page = sanitize_key( (string) wp_unslash( $_POST['artspay_express_save_context'] ) );
-		}
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
-		if ( in_array( $express_page, array( 'google_pay', 'apple_pay' ), true ) ) {
-			$express_page = 'express_checkouts';
-		}
-		$express_keys = array();
-		if ( 'express_checkouts' === $express_page ) {
-			$express_keys = array(
-				'google_pay_enabled',
-				'google_pay_merchant_id',
-				'google_pay_google_merchant_id',
-				'google_pay_button_action',
-				'google_pay_theme',
-				'apple_pay_enabled',
-			);
-		}
+		$subpages  = $this->get_settings_subpages();
+		$page      = $this->get_current_settings_subpage();
+		$page_keys = '' !== $page ? $subpages[ $page ]['fields'] : array();
 
 		parent::process_admin_options();
 
@@ -840,27 +940,21 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 		$changed = false;
 
-		// If saving from an express sub-page, merge back any settings not present on that sub-page.
-		if ( array() !== $express_keys ) {
+		// If saving from a sub-page, merge back any settings not present on that sub-page.
+		if ( array() !== $page_keys ) {
 			foreach ( $existing as $key => $value ) {
-				if ( in_array( (string) $key, $express_keys, true ) ) {
+				if ( in_array( (string) $key, $page_keys, true ) ) {
 					continue;
 				}
 				$this->settings[ (string) $key ] = $value;
 				$changed                         = true;
 			}
 		} else {
-			// Saving from the main ArtsPay settings page: preserve wallet detail fields not rendered there.
-			$detail_only_keys = array(
-				'google_pay_enabled',
-				'google_pay_button_action',
-				'google_pay_theme',
-				'google_pay_merchant_id',
-				'google_pay_google_merchant_id',
-				'apple_pay_enabled',
-				'shared_secret',
-				'use_direct_post',
-			);
+			// Saving from the main ArtsPay settings page: preserve sub-page fields not rendered there.
+			$detail_only_keys = array();
+			foreach ( $subpages as $subpage ) {
+				$detail_only_keys = array_merge( $detail_only_keys, $subpage['fields'] );
+			}
 			foreach ( $detail_only_keys as $detail_key ) {
 				$post_key = $this->get_field_key( $detail_key );
 				// If the field wasn't posted (not on this screen), keep the existing value.
@@ -912,35 +1006,15 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 */
 	public function admin_options(): void {
 		$payments_list_url = admin_url( 'admin.php?page=wc-settings&tab=checkout' );
-		$artspay_settings_url = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=fatzebra' );
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$express_page = isset( $_GET['artspay_express'] ) ? sanitize_key( (string) wp_unslash( $_GET['artspay_express'] ) ) : '';
-		if ( in_array( $express_page, array( 'google_pay', 'apple_pay' ), true ) ) {
-			wp_safe_redirect(
-				add_query_arg(
-					array(
-						'page'            => 'wc-settings',
-						'tab'             => 'checkout',
-						'section'         => 'fatzebra',
-						'artspay_express' => 'express_checkouts',
-					),
-					admin_url( 'admin.php' )
-				)
-			);
-			exit;
-		}
-		if ( '' !== $express_page && 'express_checkouts' !== $express_page ) {
-			wp_safe_redirect( $artspay_settings_url );
-			exit;
-		}
+		$subpages          = $this->get_settings_subpages();
+		$page              = $this->get_current_settings_subpage();
 
 		$header_title      = esc_html__( 'ArtsPay', 'artspay' );
 		$header_back_url   = $payments_list_url;
 		$header_back_label = esc_attr__( 'Back to payment methods', 'artspay' );
-		if ( '' !== $express_page ) {
-			$header_title      = esc_html__( 'Express checkouts', 'artspay' );
-			$header_back_url   = $artspay_settings_url . '#artspay-express-checkouts';
+		if ( '' !== $page ) {
+			$header_title      = esc_html( $subpages[ $page ]['title'] );
+			$header_back_url   = $this->get_settings_url() . '#' . $subpages[ $page ]['parent'];
 			$header_back_label = esc_attr__( 'Back to ArtsPay settings', 'artspay' );
 		}
 		echo '<div class="artspay-gateway-settings">';
@@ -950,7 +1024,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		echo '      <span aria-hidden="true">&larr;</span> ';
 		echo '    </a>';
 		echo '  </small>';
-		echo $header_title; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above with esc_html__().
+		echo $header_title; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
 		echo '</h2>';
 
 		if ( $this->is_sandbox_mode() ) {
@@ -960,48 +1034,64 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			echo '</p></div>';
 		}
 
-		if ( 'express_checkouts' === $express_page ) {
+		if ( 'express_checkouts' === $page ) {
 			$this->render_wallet_environment_notice();
-		}
-
-		// $desc = $this->get_method_description();
-		// if ( is_string( $desc ) && '' !== trim( $desc ) ) {
-		// 	echo '<p class="artspay-gateway-settings__lead">' . wp_kses_post( wpautop( wptexturize( $desc ) ) ) . '</p>';
-		// }
-
-		if ( 'express_checkouts' === $express_page ) {
-			$this->render_express_checkout_detail_page( $express_page );
+			$this->render_express_checkout_detail_page( $page );
 			echo '</div>';
 			return;
 		}
 
-		foreach ( $this->get_gateway_settings_sections() as $section_key => $section ) {
-			$section_id_attr = ( 'express' === (string) $section_key ) ? ' id="artspay-express-checkouts"' : '';
-			echo '<div class="artspay-gateway-settings__section"' . $section_id_attr . '>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Fixed attribute string.
-			echo '<div class="artspay-gateway-settings__aside">';
-			echo '<h2 class="artspay-gateway-settings__heading">' . esc_html( $section['title'] ) . '</h2>';
-			echo '<p class="artspay-gateway-settings__description">' . esc_html( $section['description'] ) . '</p>';
-			if ( ! empty( $section['links'] ) && is_array( $section['links'] ) ) {
-				echo '<ul class="artspay-gateway-settings__links" role="list">';
-				foreach ( $section['links'] as $link ) {
-					echo '<li><a class="artspay-gateway-settings__link" href="' . esc_url( $link['url'] ) . '" target="_blank" rel="noopener noreferrer">';
-					echo esc_html( $link['label'] );
-					echo '<span class="artspay-gateway-settings__link-icon" aria-hidden="true"></span></a></li>';
-				}
-				echo '</ul>';
-			}
+		if ( '' !== $page ) {
+			$this->render_settings_subpage( $page );
 			echo '</div>';
-			echo '<div class="artspay-gateway-settings__main"><div class="artspay-gateway-settings__card">';
-			if ( 'express' === (string) $section_key ) {
-				$this->render_express_checkout_list_section();
-				echo '</div></div></div>';
-				continue;
-			}
+			return;
+		}
 
-			echo '<table class="form-table">';
-			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- WooCommerce core field markup.
-			echo $this->get_settings_html_for_field_keys( $section['fields'] );
-			echo '</table></div></div></div>';
+		$section_ids = array(
+			'express'  => 'artspay-express-checkouts',
+			'security' => 'artspay-fraud-security',
+		);
+
+		foreach ( $this->get_gateway_settings_sections() as $section_key => $section ) {
+			$section_key = (string) $section_key;
+			$id_attr     = isset( $section_ids[ $section_key ] ) ? ' id="' . esc_attr( $section_ids[ $section_key ] ) . '"' : '';
+			echo '<div class="artspay-gateway-settings__section"' . $id_attr . '>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
+			$this->render_settings_aside( $section );
+			echo '<div class="artspay-gateway-settings__main"><div class="artspay-gateway-settings__card">';
+			if ( 'express' === $section_key ) {
+				$this->render_express_checkout_list_section();
+			} elseif ( 'security' === $section_key ) {
+				$this->render_security_list_section();
+			} else {
+				echo '<table class="form-table">';
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- WooCommerce core field markup.
+				echo $this->get_settings_html_for_field_keys( $section['fields'] );
+				echo '</table>';
+			}
+			echo '</div></div></div>';
+		}
+		echo '</div>';
+	}
+
+	/**
+	 * Left column of a settings section: heading, description and links.
+	 *
+	 * @param array{title: string, description?: string, links?: array<int, array{label: string, url: string}>} $section Section.
+	 */
+	private function render_settings_aside( array $section ): void {
+		echo '<div class="artspay-gateway-settings__aside">';
+		echo '<h2 class="artspay-gateway-settings__heading">' . esc_html( $section['title'] ) . '</h2>';
+		if ( ! empty( $section['description'] ) ) {
+			echo '<p class="artspay-gateway-settings__description">' . esc_html( $section['description'] ) . '</p>';
+		}
+		if ( ! empty( $section['links'] ) && is_array( $section['links'] ) ) {
+			echo '<ul class="artspay-gateway-settings__links" role="list">';
+			foreach ( $section['links'] as $link ) {
+				echo '<li><a class="artspay-gateway-settings__link" href="' . esc_url( $link['url'] ) . '" target="_blank" rel="noopener noreferrer">';
+				echo esc_html( $link['label'] );
+				echo '<span class="artspay-gateway-settings__link-icon" aria-hidden="true"></span></a></li>';
+			}
+			echo '</ul>';
 		}
 		echo '</div>';
 	}
@@ -1010,12 +1100,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * Render the Express checkouts section list (Google Pay + Apple Pay).
 	 */
 	private function render_express_checkout_list_section(): void {
-		$settings_url = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=fatzebra' );
-
-		$customize_link = add_query_arg(
-			array( 'artspay_express' => 'express_checkouts' ),
-			$settings_url
-		);
+		$customize_link = $this->get_settings_url( 'express_checkouts' );
 
 		$google_icon_url = ARTSPAY_PLUGIN_URL . 'assets/images/google-logo.png';
 		$apple_icon_url  = ARTSPAY_PLUGIN_URL . 'assets/images/apple-logo.png';
@@ -1038,20 +1123,156 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	}
 
 	/**
+	 * Status of each Fraud & security feature: on, off, or switched on but missing settings.
+	 *
+	 * @return array<string, string> Sub-page key => on|off|setup.
+	 */
+	private function get_security_statuses(): array {
+		$status = static function ( bool $switched_on, bool $ready ): string {
+			if ( ! $switched_on ) {
+				return 'off';
+			}
+			return $ready ? 'on' : 'setup';
+		};
+
+		return array(
+			'forter'   => $status( $this->fraud_detection_enabled(), true ),
+			'three_ds' => $status( 'yes' === $this->get_option( 'three_ds_enabled' ), $this->is_three_ds_enabled() ),
+			'captcha'  => $status(
+				$this->is_captcha_enabled(),
+				'' !== trim( (string) $this->get_option( 'captcha_site_key' ) ) && '' !== trim( (string) $this->get_option( 'captcha_secret_key' ) )
+			),
+		);
+	}
+
+	/**
+	 * Render the Fraud & security list (Forter, 3D Secure, Captcha).
+	 */
+	private function render_security_list_section(): void {
+		$rows = array(
+			'forter'   => array(
+				'icon' => 'dashicons-shield',
+				'meta' => __( 'Score each charge for fraud before it is approved.', 'artspay' ),
+			),
+			'three_ds' => array(
+				'icon' => 'dashicons-lock',
+				'meta' => __( 'Have the card issuer verify the cardholder, and shift chargeback liability to them.', 'artspay' ),
+			),
+			'captcha'  => array(
+				'icon' => 'dashicons-admin-users',
+				'meta' => __( 'Stop bots submitting checkout with reCAPTCHA v3 or Turnstile.', 'artspay' ),
+			),
+		);
+		$labels   = array(
+			'on'    => __( 'On', 'artspay' ),
+			'off'   => __( 'Off', 'artspay' ),
+			'setup' => __( 'Needs setup', 'artspay' ),
+		);
+		$statuses = $this->get_security_statuses();
+		$subpages = $this->get_settings_subpages();
+
+		echo '<div class="artspay-express-settings">';
+		foreach ( $rows as $key => $row ) {
+			$status = $statuses[ $key ];
+			echo '<div class="artspay-express-settings__row artspay-express-settings__row--summary">';
+			echo '<div class="artspay-express-settings__left">';
+			echo '<span class="artspay-express-settings__wallet-icon artspay-security-icon" aria-hidden="true"><span class="dashicons ' . esc_attr( $row['icon'] ) . '"></span></span>';
+			echo '<div class="artspay-express-settings__text">';
+			echo '<div class="artspay-express-settings__label">' . esc_html( $subpages[ $key ]['title'] ) . ' <span class="artspay-status artspay-status--' . esc_attr( $status ) . '">' . esc_html( $labels[ $status ] ) . '</span></div>';
+			echo '<div class="artspay-express-settings__meta">' . esc_html( $row['meta'] ) . '</div>';
+			echo '</div>';
+			echo '</div>';
+			echo '<div class="artspay-express-settings__right">';
+			echo '<a class="button button-secondary" href="' . esc_url( $this->get_settings_url( $key ) ) . '">' . esc_html__( 'Manage', 'artspay' ) . '</a>';
+			echo '</div>';
+			echo '</div>';
+		}
+		echo '</div>';
+	}
+
+	/**
+	 * Render a sub-page with one section of fields (Forter, 3D Secure, Captcha).
+	 *
+	 * @param string $page Sub-page key.
+	 */
+	private function render_settings_subpage( string $page ): void {
+		$subpage = $this->get_settings_subpages()[ $page ];
+
+		echo '<input type="hidden" name="artspay_settings_page" value="' . esc_attr( $page ) . '" />';
+
+		if ( 'three_ds' === $page ) {
+			$this->render_three_ds_notices();
+		}
+
+		echo '<div class="artspay-gateway-settings__section">';
+		$this->render_settings_aside( $subpage );
+		echo '<div class="artspay-gateway-settings__main"><div class="artspay-gateway-settings__card">';
+		echo '<table class="form-table">';
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- WooCommerce core field markup.
+		echo $this->get_settings_html_for_field_keys( $subpage['fields'] );
+		echo '</table>';
+		echo '</div></div></div>';
+	}
+
+	/**
+	 * Explain what 3D Secure still needs before it can run.
+	 */
+	private function render_three_ds_notices(): void {
+		$missing = array();
+		if ( 'hosted' !== $this->get_option( 'card_form', 'onsite' ) ) {
+			$missing[] = sprintf(
+				/* translators: %s: link to the main ArtsPay settings */
+				__( 'Set <strong>Card form</strong> to the secure hosted form in the <a href="%s">ArtsPay settings</a>.', 'artspay' ),
+				esc_url( $this->get_settings_url() )
+			);
+		} elseif ( ! $this->is_hosted_card_enabled() ) {
+			$missing[] = sprintf(
+				/* translators: %s: link to the main ArtsPay settings */
+				__( 'Add your <strong>Gateway Shared Secret</strong> in the <a href="%s">ArtsPay settings</a>.', 'artspay' ),
+				esc_url( $this->get_settings_url() )
+			);
+		}
+		if ( '' === trim( (string) $this->get_option( 'oauth_access_key' ) ) || '' === trim( (string) $this->get_option( 'oauth_access_secret' ) ) ) {
+			$missing[] = __( 'Add the OAuth access key and secret below.', 'artspay' );
+		}
+		if ( ! is_ssl() ) {
+			// fatzebra.js uses browser features that only exist on secure (HTTPS) pages.
+			$missing[] = __( 'Your store isn\'t on HTTPS. 3D Secure only works on HTTPS pages, so card payments would fail verification.', 'artspay' );
+		}
+		if ( 'yes' === $this->get_option( 'deferred_payments' ) ) {
+			$missing[] = __( 'Deferred payments are on. Those orders are charged later, so they skip 3D Secure. Subscription orders still use it.', 'artspay' );
+		}
+
+		if ( array() === $missing ) {
+			return;
+		}
+
+		$class = 'yes' === $this->get_option( 'three_ds_enabled' ) && ! $this->is_three_ds_enabled() ? 'notice-error' : 'notice-info';
+		echo '<div class="notice ' . esc_attr( $class ) . ' inline"><p><strong>' . esc_html__( 'Before 3D Secure can run:', 'artspay' ) . '</strong></p><ul class="ul-disc">';
+		foreach ( $missing as $item ) {
+			echo '<li>' . wp_kses(
+				$item,
+				array(
+					'a'      => array( 'href' => true ),
+					'strong' => array(),
+				)
+			) . '</li>';
+		}
+		echo '</ul></div>';
+	}
+
+	/**
 	 * Render the unified Express checkouts detail “page” within the settings screen.
 	 *
 	 * @param string $express_page Expected: express_checkouts.
 	 */
 	private function render_express_checkout_detail_page( string $express_page ): void {
-		$settings_url = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=fatzebra' );
-		$back_url     = $settings_url . '#artspay-express-checkouts';
-
 		if ( 'express_checkouts' !== $express_page ) {
 			return;
 		}
 
 		echo '<div class="artspay-express-checkouts-page" id="artspay-express-checkouts">';
-		echo '<input type="hidden" name="artspay_express_save_context" value="express_checkouts" />';
+		echo '<input type="hidden" name="artspay_settings_page" value="express_checkouts" />';
 
 		// Apple Pay — aside + card (matches main gateway section layout).
 		echo '<div class="artspay-gateway-settings__section artspay-gateway-settings__section--express">';
@@ -1234,35 +1455,19 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * and the actual payment fields.
 	 */
 	public function payment_fields(): void {
-		if ( $this->direct_post_enabled() ) {
-			// Register and enqueue direct post handling script.
-			$url = $this->get_direct_post_url();
-
-			$return_path        = uniqid( 'fatzebra-nonce-' );
-			$verification_value = hash_hmac( 'md5', $return_path, $this->get_gateway_credentials()['shared_secret'] );
-
-			wp_register_script( 'fz-direct-post-handler', ARTSPAY_PLUGIN_URL . '/images/fatzebra.js', array( 'jquery' ), ARTSPAY_PLUGIN_VERSION, true );
-			wp_localize_script(
-				'fz-direct-post-handler',
-				'fatzebra',
-				array(
-					'url'                => $url,
-					'return_path'        => $return_path,
-					'verification_value' => $verification_value,
-				)
-			);
-			wp_enqueue_script( 'fz-direct-post-handler' );
-		}
-
 		$this->render_sandbox_checkout_notice();
 
 		echo wp_kses_post( $this->get_card_logos_html() );
-		echo "<input type='hidden' name='fatzebra-token' id='fatzebra-token' /><span class='payment-errors required'></span>";
 
 		// Add captcha field if enabled.
 		if ( $this->is_captcha_enabled() ) {
 			$this->render_captcha_field();
 			$this->enqueue_captcha_scripts();
+		}
+
+		if ( $this->is_hosted_card_enabled() ) {
+			$this->render_hosted_card_fields();
+			return;
 		}
 
 		$this->form();
@@ -1295,7 +1500,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 		$attempt_scope = $this->get_exceeded_attempt_scope( (int) $order_id );
 		if ( '' !== $attempt_scope ) {
-			$this->apply_attempt_limit( new WC_Order( $order_id ), $attempt_scope );
+			$this->apply_attempt_limit( wc_get_order( $order_id ), $attempt_scope );
 			wc_add_notice( $this->get_attempt_limit_message(), 'error' );
 			return;
 		}
@@ -1316,7 +1521,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 		$this->record_payment_attempt( (int) $order_id );
 
-		$order = new WC_Order( $order_id );
+		$order = wc_get_order( $order_id );
 		$this->params['currency'] = $order->get_currency();
 		$ip                        = $this->get_order_ip_address( $order );
 		$this->params['customer_ip'] = $ip; // Backwards compatible with existing payloads.
@@ -1329,7 +1534,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			$defer_payment = 'no';
 
 			$this->params['amount']      = $this->convert_to_cents( $order->get_total() );
-			$this->params['reference']   = (string) $order_id;
+			$this->params['reference']   = $this->new_payment_reference( (int) $order_id );
 			$this->params['test']        = $this->is_sandbox_mode();
 			$this->params['deferred']    = false;
 
@@ -1362,7 +1567,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				$defer_payment = 'no';
 
 				$this->params['amount']    = $this->convert_to_cents( $order->get_total() );
-				$this->params['reference'] = (string) $order_id;
+				$this->params['reference'] = $this->new_payment_reference( (int) $order_id );
 				$this->params['test']      = $this->is_sandbox_mode();
 				$this->params['deferred']  = false;
 
@@ -1393,8 +1598,15 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			} else {
 			// WooCommerce verifies the checkout nonce before calling process_payment().
 			// phpcs:disable WordPress.Security.NonceVerification.Missing
-			if ( $this->direct_post_enabled() ) {
-				$this->params['card_token'] = $this->posted_field( 'fatzebra-token' );
+			$hosted = $this->is_hosted_card_enabled();
+			if ( $hosted ) {
+				// Token from the secure hosted form: the card number never reaches this server.
+				$this->params['card_token'] = $this->posted_field( 'artspay-card-token' );
+				if ( '' === $this->params['card_token'] ) {
+					$this->release_payment_attempt( (int) $order_id );
+					wc_add_notice( __( 'Enter your card details in the secure card form, then press Pay now.', 'artspay' ), 'error' );
+					return;
+				}
 			} else {
 				// Card fields: digits only, so spaces and stray characters never reach Fat Zebra.
 				$card_number = $this->posted_field( 'fatzebra-card-number', 'cardnumber' );
@@ -1421,6 +1633,19 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				$defer_payment = 'no';
 			}
 
+			// 3DS is checked here as well as in the browser, so a request that skips it is refused.
+			// Deferred payments charge later, when a 3DS result is no longer valid, and a $0 order
+			// (such as a free trial) only stores the card.
+			if ( $hosted && 'yes' !== $defer_payment && $this->is_three_ds_enabled() && $this->convert_to_cents( (float) $order->get_total() ) > 0 ) {
+				$three_ds = $this->get_posted_three_ds_result();
+				if ( null === $three_ds ) {
+					$this->release_payment_attempt( (int) $order_id );
+					wc_add_notice( __( 'Your card needs to be verified with your bank first. Press Place order to try again.', 'artspay' ), 'error' );
+					return;
+				}
+				$this->params['extra'] = $three_ds;
+			}
+
 			Debug_Logger::log(
 				sprintf(
 					/* translators: 1: order id, 2: sandbox yes/no, 3: deferred yes/no */
@@ -1436,7 +1661,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			// Periodic charging should happen via scheduled_subscription_payment_fatzebra.
 			$this->params['amount'] = $this->convert_to_cents( $order->get_total() );
 
-			$this->params['reference'] = (string) $order_id;
+			$this->params['reference'] = $this->new_payment_reference( (int) $order_id );
 			$this->params['test']      = $this->is_sandbox_mode();
 			$this->params['deferred']  = 'yes' === $defer_payment;
 
@@ -1451,10 +1676,17 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				$this->params['fraud'] = $fraud_data;
 			}
 
-			if ( 'yes' === $defer_payment ) {
+			if ( $hosted && ( 'yes' === $defer_payment || 0 === $this->params['amount'] ) ) {
+				// The hosted form already stored the card, so there's nothing to tokenize.
+				$result = $this->get_hosted_card( $this->params['card_token'] );
+			} elseif ( 'yes' === $defer_payment ) {
 				$result = $this->tokenize_card( $this->params );
 			} else {
 				$result = $this->do_payment( $this->params );
+			}
+
+			if ( isset( $three_ds ) ) {
+				$this->add_three_ds_order_note( $order, $three_ds );
 			}
 			}
 		}
@@ -1553,15 +1785,14 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			);
 			// For a deferred payment we set the status to on-hold and then add a detailed note for review.
 			if ( isset( $defer_payment ) && 'yes' === $defer_payment ) {
-				$date = new DateTime( $result['card_expiry'], new DateTimeZone( 'Australia/Sydney' ) );
+				$date = new DateTime( $result['card_expiry'], wp_timezone() );
 				$note = 'Deferred Payment:<ul><li>Card Token: ' . $result['card_token'] . '</li><li>Cardholder: ' . $result['card_holder'] . '</li><li>Card Number: ' . $result['card_number'] . '</li><li>Expiry: ' . $date->format( 'm/Y' ) . '</li></ul>';
+				$order->update_meta_data( '_fatzebra_card_token', $result['card_token'] );
+				$order->update_meta_data( 'Card Token', $result['card_token'] );
+				$order->update_meta_data( 'amount', $this->params['amount'] );
+				$order->update_meta_data( 'currency', $order->get_currency() );
+				$order->update_meta_data( 'fraud_data', 'yes' === $this->settings['fraud_data'] ? 'true' : 'false' );
 				$order->update_status( 'on-hold', $note );
-				update_post_meta( $order->get_id(), '_fatzebra_card_token', $result['card_token'] );
-				update_post_meta( $order->get_id(), 'Card Token', $result['card_token'] );
-				update_post_meta( $order->get_id(), 'reference', $this->params['reference'] );
-				update_post_meta( $order->get_id(), 'amount', $this->params['amount'] );
-				update_post_meta( $order->get_id(), 'currency', get_option( 'woocommerce_currency' ) );
-				update_post_meta( $order->get_id(), 'fraud_data', 'yes' === $this->settings['fraud_data'] ? 'true' : 'false' );
 			} else {
 				if ( 0 === $this->params['amount'] ) {
 					$order->add_order_note(
@@ -1577,12 +1808,11 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 					$this->add_forter_order_notes( $order, $result['response_data']->response );
 				}
 
+				// Store the card token for refunds and renewals.
+				$order->update_meta_data( '_fatzebra_card_token', $result['card_token'] );
+				$order->update_meta_data( 'Card Token', $result['card_token'] );
+				$order->update_meta_data( 'Transaction ID', $result['transaction_id'] );
 				$order->payment_complete( $result['transaction_id'] );
-
-				// Store the card token as post meta.
-				update_post_meta( $order_id, '_fatzebra_card_token', $result['card_token'] );
-				update_post_meta( $order_id, 'Card Token', $result['card_token'] );
-				update_post_meta( $order_id, 'Transaction ID', $result['transaction_id'] );
 			}
 			$woocommerce->cart->empty_cart();
 
@@ -1606,7 +1836,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * @return bool|WP_Error True or false based on success, or a WP_Error object.
 	 */
 	public function process_refund( $order_id, $amount = null, $reason = '' ): WP_Error|bool {
-		$order = new WC_Order( $order_id );
+		$order = wc_get_order( $order_id );
 
 		$params = array(
 			'amount'         => $this->convert_to_cents( $amount ),
@@ -1656,11 +1886,11 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		$this->params              = array();
 		$this->params['amount']    = $this->convert_to_cents( $amount_to_charge );
 		$this->params['test']      = $this->is_sandbox_mode();
-		$this->params['reference'] = $order->get_id() . '-' . gmdate( 'dmY' ); // Reference for order ID 123 will become 123-01022012.
+		$this->params['reference'] = $this->new_payment_reference( $order->get_id() );
 
-		$token = get_post_meta( $order->get_id(), '_fatzebra_card_token', true );
+		$token = $order->get_meta( '_fatzebra_card_token' );
 		if ( empty( $token ) ) {
-			$token = get_post_meta( $order->get_id(), 'fatzebra_card_token', true );
+			$token = $order->get_meta( 'fatzebra_card_token' );
 		}
 
 		$this->params['card_token']  = $token;
@@ -1794,7 +2024,10 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * @return array|WP_Error
 	 */
 	public function tokenize_card( array $params ): WP_Error|array {
-		$order = new WC_Order( $params['reference'] );
+		$order = $this->get_order_for_fraud_reference( (string) $params['reference'] );
+		if ( ! $order ) {
+			return new WP_Error( 4, 'Unknown Error', __( 'Order not found for tokenization.', 'artspay' ) );
+		}
 
 		if ( ! isset( $params['customer_ip'] ) ) {
 			$params['customer_ip'] = $order->get_customer_ip_address() ?? '127.0.0.1';
@@ -1817,13 +2050,37 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			return $result;
 		}
 
-		update_post_meta( $order->get_id(), 'Card Token', $result['card_token'] );
-		update_post_meta( $order->get_id(), 'reference', $params['reference'] );
-		update_post_meta( $order->get_id(), 'amount', $params['amount'] );
-		update_post_meta( $order->get_id(), 'currency', $params['currency'] );
-		update_post_meta( $order->get_id(), 'fraud_data', isset( $params['fraud'] ) );
+		$order->update_meta_data( 'Card Token', $result['card_token'] );
+		$order->update_meta_data( 'amount', $params['amount'] );
+		$order->update_meta_data( 'currency', $params['currency'] );
+		$order->update_meta_data( 'fraud_data', isset( $params['fraud'] ) ? 'true' : 'false' );
+		$order->save();
 
 		return $result;
+	}
+
+	/**
+	 * Card details for a token from the secure hosted form, in the same shape as tokenize_card().
+	 *
+	 * @param string $card_token Card token.
+	 *
+	 * @return array|WP_Error
+	 */
+	private function get_hosted_card( string $card_token ): WP_Error|array {
+		$client = new Client();
+
+		return $client->get_card( $card_token, $this->get_gateway_credentials(), $this->is_sandbox_mode() );
+	}
+
+	/**
+	 * Fat Zebra reference for one payment attempt: the order ID plus a short random suffix.
+	 * Fat Zebra rejects a reference it has seen before, which a retried order, a deferred capture
+	 * or another store on the same merchant account would otherwise hit.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	public function new_payment_reference( int $order_id ): string {
+		return $order_id . '-' . strtolower( wp_generate_password( 6, false ) );
 	}
 
 	/**
@@ -2027,7 +2284,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		);
 
 		if ( 'yes' === $this->settings['fraud_device_id'] ) {
-			$fraud_data['device_id'] = get_post_meta( $order->get_id(), 'device_id', true );
+			$fraud_data['device_id'] = $order->get_meta( 'device_id' );
 		}
 
 		/**
@@ -2096,6 +2353,36 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	}
 
 	/**
+	 * Fat Zebra shipping method for Forter: low_cost, same_day, overnight, express, international,
+	 * pickup or other. WooCommerce doesn't say how fast a method is, so only pickup and
+	 * international are detected and everything else is low_cost.
+	 *
+	 * @param WC_Order $order   Order.
+	 * @param string   $country Two-letter shipping country.
+	 */
+	private function get_fraud_shipping_method( WC_Order $order, string $country ): string {
+		$method = 'low_cost';
+		foreach ( $order->get_shipping_methods() as $shipping ) {
+			if ( in_array( $shipping->get_method_id(), array( 'local_pickup', 'pickup_location' ), true ) ) {
+				$method = 'pickup';
+				break;
+			}
+		}
+		if ( 'low_cost' === $method && '' !== $country && WC()->countries && strtoupper( $country ) !== WC()->countries->get_base_country() ) {
+			$method = 'international';
+		}
+
+		/**
+		 * Filter the shipping method sent to Forter, for example to map an express shipping
+		 * method to "express".
+		 *
+		 * @param string   $method Fat Zebra shipping method.
+		 * @param WC_Order $order  Order.
+		 */
+		return (string) apply_filters( 'artspay_fraud_shipping_method', $method, $order );
+	}
+
+	/**
 	 * Fetches the shipping details from the order for the fraud check request
 	 *
 	 * @param WC_Order $order Order object.
@@ -2119,7 +2406,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			'home_phone'      => $this->fraud_phone_for_order( $order ),
 			'last_name'       => $order->get_shipping_last_name(),
 			'post_code'       => $order->get_shipping_postcode(),
-			'shipping_method' => 'low_cost', // TODO: Shipping Method Map.
+			'shipping_method' => $this->get_fraud_shipping_method( $order, $ship_cc ),
 		);
 
 		if ( empty( $data['email'] ) ) {
@@ -2217,11 +2504,12 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		}
 		$r = $response_data->response;
 		if ( isset( $r->fraud_result ) ) {
-			update_post_meta( $order->get_id(), '_artspay_fraud_result', sanitize_text_field( (string) $r->fraud_result ) );
+			$order->update_meta_data( '_artspay_fraud_result', sanitize_text_field( (string) $r->fraud_result ) );
 		}
 		if ( isset( $r->fraud_messages ) && is_array( $r->fraud_messages ) ) {
-			update_post_meta( $order->get_id(), '_artspay_fraud_messages', sanitize_text_field( implode( '; ', $r->fraud_messages ) ) );
+			$order->update_meta_data( '_artspay_fraud_messages', sanitize_text_field( implode( '; ', $r->fraud_messages ) ) );
 		}
+		$order->save();
 	}
 
 	/**

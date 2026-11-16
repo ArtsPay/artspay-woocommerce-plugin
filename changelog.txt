@@ -1,5 +1,17 @@
 *** Changelog ***
 
+2026-11-16 - version 3.2.0
+* Add - Secure hosted card form. Set Card form to "Secure hosted form" and customers enter their card in Fat Zebra's form inside your checkout. Card numbers go straight to Fat Zebra and never reach your server, which keeps the store out of most PCI scope (SAQ A). Needs the Gateway Shared Secret.
+* Add - 3D Secure. With the hosted form, the customer's bank can verify the cardholder before a card is charged, which shifts liability for fraudulent chargebacks to the card issuer. Payments that fail verification are blocked, and each order gets a note with the outcome. Needs 3D Secure turned on for the merchant account and an OAuth client from Fat Zebra. Deferred payments and $0 orders skip it.
+* Update - Settings: Forter, 3D Secure and Captcha now each have their own page under a new Fraud & security section, with an On, Off or Needs setup label on each. The Gateway Shared Secret is shown again under Account details.
+* Fix - Capturing a deferred payment marked the order as paid even when the card was declined. A declined capture now leaves the order on hold with a note.
+* Fix - Works with WooCommerce's order storage (HPOS), the default on new stores. Card tokens, deferred payment details, fraud results and the device ID were saved where HPOS stores don't read them, which could break deferred capture, refunds and renewals. Existing orders keep their data.
+* Fix - Fat Zebra rejected a payment as "Reference is already taken" when an order was retried, captured later, or shared a merchant account with another store. Every attempt now gets its own reference: the order number plus a short suffix.
+* Security - 3D Secure checks are limited to 10 per session and 20 per IP address an hour (filter: `artspay_3ds_limits`), so the check can't be used to test cards.
+* Update - Forter now receives "pickup" or "international" as the shipping method when they apply, instead of always "low_cost". Filter: `artspay_fraud_shipping_method`.
+* Remove - Direct Post code and its hidden setting. The secure hosted card form replaces it.
+* Dev - Browser tests (Playwright) for checkout, 3D Secure and settings in `tests/e2e`, with a script that builds a throwaway test store.
+
 2026-11-06 - version 3.1.4
 * Fix - After a declined Google Pay or Apple Pay payment, the spent wallet token stayed on the page. Paying with a card then resent the token and ignored the card, using up payment attempts.
 * Fix - The Google Pay "complete any required fields" message now only appears when the customer has something left to do, not when the order is submitting by itself.

@@ -33,7 +33,10 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'maybe_enqueue_gateway_admin_assets' ), 20 );
 		add_action( 'admin_init', array( $this, 'init_admin' ) );
-		add_action( 'save_post', array( $this, 'set_recurring_payment_method' ) );
+		// Fires when an order is saved in wp-admin, with either order storage (save_post misses HPOS orders).
+		add_action( 'woocommerce_process_shop_order_meta', array( $this, 'set_recurring_payment_method' ) );
+		add_action( 'wc_ajax_artspay_hosted_card_form', array( $this, 'ajax_hosted_card_form' ) );
+		add_action( 'wc_ajax_artspay_3ds_prepare', array( $this, 'ajax_three_ds_prepare' ) );
 
 		// Register admin-post handlers early (admin-post requests may not run admin_init).
 		if ( is_admin() ) {
@@ -140,20 +143,47 @@ final class Plugin {
 			ARTSPAY_PLUGIN_VERSION
 		);
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$express_page = isset( $_GET['artspay_express'] ) ? sanitize_key( (string) wp_unslash( $_GET['artspay_express'] ) ) : '';
-		if ( 'express_checkouts' !== $express_page ) {
+		$gateway = self::get_gateway();
+		if ( ! $gateway || 'express_checkouts' !== $gateway->get_current_settings_subpage() ) {
 			return;
 		}
 
-		$wc_gateways = WC()->payment_gateways();
-		$gateways    = $wc_gateways->payment_gateways();
-		if ( ! isset( $gateways['fatzebra'] ) || ! $gateways['fatzebra'] instanceof CreditCardGateway ) {
-			return;
-		}
+		$gateway->enqueue_google_pay_admin_preview_scripts();
+		$gateway->enqueue_apple_pay_admin_preview_scripts();
+	}
 
-		$gateways['fatzebra']->enqueue_google_pay_admin_preview_scripts();
-		$gateways['fatzebra']->enqueue_apple_pay_admin_preview_scripts();
+	/**
+	 * The ArtsPay gateway instance WooCommerce has loaded.
+	 */
+	private static function get_gateway(): ?CreditCardGateway {
+		if ( ! function_exists( 'WC' ) ) {
+			return null;
+		}
+		$gateways = WC()->payment_gateways()->payment_gateways();
+
+		return isset( $gateways['fatzebra'] ) && $gateways['fatzebra'] instanceof CreditCardGateway ? $gateways['fatzebra'] : null;
+	}
+
+	/**
+	 * Checkout AJAX: signed URL for the secure hosted card form.
+	 */
+	public function ajax_hosted_card_form(): void {
+		$gateway = self::get_gateway();
+		if ( ! $gateway ) {
+			wp_send_json_error( null, 400 );
+		}
+		$gateway->ajax_hosted_card_form();
+	}
+
+	/**
+	 * Checkout AJAX: verification and access token for 3D Secure.
+	 */
+	public function ajax_three_ds_prepare(): void {
+		$gateway = self::get_gateway();
+		if ( ! $gateway ) {
+			wp_send_json_error( null, 400 );
+		}
+		$gateway->ajax_three_ds_prepare();
 	}
 
 	/**
@@ -183,14 +213,17 @@ final class Plugin {
 	 *  - The method is not set
 	 *  - the fatzebra_card_token is set
 	 *
-	 * @param int $post_id Post ID.
+	 * @param int $order_id Order ID.
 	 */
-	public function set_recurring_payment_method( int $post_id ): void {
-		$method = get_post_meta( $post_id, '_recurring_payment_method', true );
-		$token  = get_post_meta( $post_id, 'fatzebra_card_token', true );
-		if ( empty( $method ) && ! empty( $token ) ) {
-			update_post_meta( $post_id, '_recurring_payment_method', 'fatzebra' );
-			update_post_meta( $post_id, '_recurring_payment_method_title', 'Credit Card (ArtsPay)' );
+	public function set_recurring_payment_method( int $order_id ): void {
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+		if ( empty( $order->get_meta( '_recurring_payment_method' ) ) && ! empty( $order->get_meta( 'fatzebra_card_token' ) ) ) {
+			$order->update_meta_data( '_recurring_payment_method', 'fatzebra' );
+			$order->update_meta_data( '_recurring_payment_method_title', 'Credit Card (ArtsPay)' );
+			$order->save();
 		}
 	}
 
@@ -234,7 +267,7 @@ final class Plugin {
 			return $plugin_meta;
 		}
 
-		$docs_url = apply_filters( 'artspay_docs_url', 'https://artspay.notion.site/Payment-Gateway-Guides-7ef95eee075c4e0f917332e6c1ea10ba' );
+		$docs_url = apply_filters( 'artspay_docs_url', 'https://www.artspay.com/docs/guides/wordpress-woocommerce' );
 
 		$row_meta = array(
 			'docs' => '<a href="' . esc_url( $docs_url ) . '" aria-label="' . esc_attr__( 'View documentation', 'artspay' ) . '" target="_blank">' . esc_html__( 'Documentation', 'artspay' ) . '</a>',

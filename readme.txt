@@ -5,11 +5,11 @@ Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.0
 Requires Plugins: woocommerce
-Stable tag: 3.1.4
+Stable tag: 3.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Accept card payments via the Fat Zebra gateway with ArtsPay — optional Forter fraud screening, captcha, and deferred capture. Supports WooCommerce Subscriptions.
+Accept card payments via the Fat Zebra gateway with ArtsPay — optional secure hosted card form, 3D Secure, Forter fraud screening, captcha, and deferred capture. Supports WooCommerce Subscriptions.
 
 == Description ==
 
@@ -18,6 +18,8 @@ WooCommerce ArtsPay Gateway connects your WooCommerce store to **ArtsPay** / **F
 **Features:**
 
 * Inline (server-side) card checkout — the default flow.
+* Optional secure hosted card form: Fat Zebra's card form inside your checkout, so card numbers never reach your server.
+* Optional 3D Secure with the hosted card form, so the card issuer verifies the cardholder and carries the chargeback liability.
 * Optional **Forter fraud screening** (via Fat Zebra), with order-level audit trail (`_artspay_fraud_result`, `_artspay_fraud_messages`) and optional email alerts on decline.
 * Optional captcha (reCAPTCHA v3 or Cloudflare Turnstile) before payment submission.
 * Payment attempt limits per order, session and IP address to stop card testing.
@@ -28,7 +30,7 @@ WooCommerce ArtsPay Gateway connects your WooCommerce store to **ArtsPay** / **F
 
 **PHP:** the plugin runs on PHP 8.0 or later, but we recommend PHP 8.3 or later, kept on the latest patch release. Older PHP versions no longer receive security fixes.
 
-See [FRAUD.md](FRAUD.md) in the repository for full detail on fraud screening behaviour, and note that 3-D Secure (3DS) is **not** implemented in this plugin.
+See [FRAUD.md](FRAUD.md) in the repository for full detail on fraud screening and 3D Secure behaviour.
 
 == Installation ==
 
@@ -38,13 +40,13 @@ See [FRAUD.md](FRAUD.md) in the repository for full detail on fraud screening be
 4. Enable the method, set the customer-facing title, enter your Fat Zebra / ArtsPay gateway credentials, and save.
 5. Test checkout in sandbox mode before going live.
 
-Full configuration detail (deferred payments, Forter, captcha) is in the repository [README](README.md).
+Full configuration detail (card form, 3D Secure, deferred payments, Forter, captcha) is in the repository [README](README.md).
 
 == Frequently Asked Questions ==
 
 = Does this support 3-D Secure (3DS)? =
 
-No. Card flows use the standard Fat Zebra purchase path; 3DS is not implemented in this plugin.
+Yes, from 3.2.0, with the secure hosted card form. ArtsPay must turn on 3D Secure for your merchant account, and you need an OAuth client from the Fat Zebra Merchant Dashboard. Set it up under **Fraud & security → 3D Secure**.
 
 = How do I test fraud screening outcomes in sandbox? =
 
@@ -52,13 +54,21 @@ Use the billing emails `accept@email.com`, `challenge@email.com`, or `deny@email
 
 = Does this support Google Pay or Apple Pay? =
 
-Wallet/express checkout support exists in the codebase but its enabled/disabled status varies by release — check the Changelog below and the plugin settings for the version you're running.
-
-== Screenshots ==
-
-[TODO: scamped, to add when deploying]
+Yes. Turn them on under **Express checkouts** in the ArtsPay settings. The buttons appear on the cart and checkout. Google Pay needs a Fat Zebra Google Pay merchant ID, and Apple Pay needs your domain verified and registered from the same page. Both need HTTPS on a live store.
 
 == Changelog ==
+
+= 3.2.0 =
+* Add - Secure hosted card form. Set Card form to "Secure hosted form" and customers enter their card in Fat Zebra's form inside your checkout. Card numbers go straight to Fat Zebra and never reach your server, which keeps the store out of most PCI scope (SAQ A). Needs the Gateway Shared Secret.
+* Add - 3D Secure. With the hosted form, the customer's bank can verify the cardholder before a card is charged, which shifts liability for fraudulent chargebacks to the card issuer. Payments that fail verification are blocked, and each order gets a note with the outcome. Needs 3D Secure turned on for the merchant account and an OAuth client from Fat Zebra. Deferred payments and $0 orders skip it.
+* Update - Settings: Forter, 3D Secure and Captcha now each have their own page under a new Fraud & security section, with an On, Off or Needs setup label on each. The Gateway Shared Secret is shown again under Account details.
+* Fix - Capturing a deferred payment marked the order as paid even when the card was declined. A declined capture now leaves the order on hold with a note.
+* Fix - Works with WooCommerce's order storage (HPOS), the default on new stores. Card tokens, deferred payment details, fraud results and the device ID were saved where HPOS stores don't read them, which could break deferred capture, refunds and renewals. Existing orders keep their data.
+* Fix - Fat Zebra rejected a payment as "Reference is already taken" when an order was retried, captured later, or shared a merchant account with another store. Every attempt now gets its own reference: the order number plus a short suffix.
+* Security - 3D Secure checks are limited to 10 per session and 20 per IP address an hour (filter: `artspay_3ds_limits`), so the check can't be used to test cards.
+* Update - Forter now receives "pickup" or "international" as the shipping method when they apply, instead of always "low_cost". Filter: `artspay_fraud_shipping_method`.
+* Remove - Direct Post code and its hidden setting. The secure hosted card form replaces it.
+* Dev - Browser tests (Playwright) for checkout, 3D Secure and settings in `tests/e2e`, with a script that builds a throwaway test store.
 
 = 3.1.4 =
 * Fix - After a declined Google Pay or Apple Pay payment, the spent wallet token stayed on the page. Paying with a card then resent the token and ignored the card, using up payment attempts.
@@ -96,6 +106,9 @@ Wallet/express checkout support exists in the codebase but its enabled/disabled 
 * Update - Google Pay / Apple Pay express checkout UI and storefront hooks are disabled in this release; wallet flows are planned to return in 3.1.1.
 
 == Upgrade Notice ==
+
+= 3.2.0 =
+Adds an optional secure hosted card form and 3D Secure, moves Forter, 3D Secure and Captcha onto their own settings pages, adds support for WooCommerce's order storage (HPOS), and fixes declined deferred captures being marked as paid. Recommended for all stores.
 
 = 3.1.4 =
 Fixes paying by card after a declined Google Pay or Apple Pay payment. Recommended for stores using wallets.
