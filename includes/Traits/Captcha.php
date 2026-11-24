@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Traits;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Assets\Core;
 use ArtsPay\Debug_Logger;
 
@@ -99,7 +103,7 @@ trait Captcha {
 		} elseif ( 'cloudflare' === $provider ) {
 			wp_enqueue_script(
 				'cloudflare-turnstile',
-				'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
+				'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', // phpcs:ignore PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent -- Cloudflare requires Turnstile to load from its own servers. Only used when the merchant chooses it.
 				array(),
 				null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
 				true
@@ -160,7 +164,7 @@ trait Captcha {
 		if ( 'google' === $provider ) {
 			$verify_url = 'https://www.google.com/recaptcha/api/siteverify';
 		} elseif ( 'cloudflare' === $provider ) {
-			$verify_url = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+			$verify_url = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'; // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- Server-side API call to check a captcha token.
 		}
 
 		if ( empty( $verify_url ) ) {

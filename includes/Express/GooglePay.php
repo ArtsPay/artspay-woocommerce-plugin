@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Express;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Assets\Core;
 use ArtsPay\Gateways\CreditCardGateway;
 
@@ -56,7 +60,7 @@ final class GooglePay {
 		$GLOBALS[ $key ] = true;
 
 		$google_ok = $this->is_express_enabled();
-		$apple_ok  = ( 'yes' === (string) $this->gateway->get_option( 'enabled', 'no' ) )
+		$apple_ok  = ( 'yes' === (string) $this->gateway->get_option( 'enabled', 'no' ) && ! $this->gateway->needs_setup() )
 			&& ( 'yes' === (string) $this->gateway->get_option( 'apple_pay_enabled', 'no' ) )
 			&& ( WC()->cart && ! WC()->cart->is_empty() )
 			&& ( $this->gateway->is_sandbox_mode() || is_ssl() );
@@ -94,13 +98,13 @@ final class GooglePay {
 	 * Whether Google Pay express UI should be shown.
 	 */
 	public function is_express_enabled(): bool {
-		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) ) {
+		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) || $this->gateway->needs_setup() ) {
 			return false;
 		}
 		if ( 'yes' !== (string) $this->gateway->get_option( 'google_pay_enabled', 'no' ) ) {
 			return false;
 		}
-		$merchant_id = trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) );
+		$merchant_id = $this->gateway->get_mode_option( 'google_pay_merchant_id' );
 		if ( '' === $merchant_id ) {
 			return false;
 		}
@@ -121,7 +125,7 @@ final class GooglePay {
 		if ( function_exists( 'is_order_received_page' ) && is_order_received_page() ) {
 			return;
 		}
-		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) ) {
+		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) || $this->gateway->needs_setup() ) {
 			return;
 		}
 
@@ -176,7 +180,7 @@ final class GooglePay {
 			$cart_total = wc_format_decimal( WC()->cart->get_total( 'edit' ), wc_get_price_decimals() );
 		}
 
-		$gateway_merchant_id = trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) );
+		$gateway_merchant_id = $this->gateway->get_mode_option( 'google_pay_merchant_id' );
 		$google_merchant_id  = trim( (string) $this->gateway->get_option( 'google_pay_google_merchant_id', '' ) );
 		$merchant_name = get_bloginfo( 'name' );
 		$button_action = (string) $this->gateway->get_option( 'google_pay_button_action', 'buy' );
@@ -266,7 +270,7 @@ final class GooglePay {
 		$base_country  = isset( $base_location['country'] ) ? (string) $base_location['country'] : '';
 
 		return array(
-			'gatewayMerchantId'   => trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) ),
+			'gatewayMerchantId'   => $this->gateway->get_mode_option( 'google_pay_merchant_id' ),
 			'googleMerchantId'    => trim( (string) $this->gateway->get_option( 'google_pay_google_merchant_id', '' ) ),
 			'googleMerchantName'  => get_bloginfo( 'name' ),
 			'environment'         => $this->gateway->is_sandbox_mode() ? 'TEST' : 'PRODUCTION',

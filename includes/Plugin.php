@@ -7,6 +7,10 @@
 
 namespace ArtsPay;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Admin\ApplePay as ApplePayAdmin;
 use ArtsPay\Gateways\CreditCardGateway;
 
@@ -22,14 +26,21 @@ final class Plugin {
 	private static ?self $instance = null;
 
 	/**
+	 * Settings with a live and a test value. The live key keeps the name it had before 3.4.1 and
+	 * the test key has a test_ prefix.
+	 *
+	 * @var string[]
+	 */
+	private const MODE_FIELDS = array( 'username', 'token', 'shared_secret', 'oauth_access_key', 'oauth_access_secret', 'google_pay_merchant_id' );
+
+	/**
 	 * Constructor.
 	 */
 	private function __construct() {
-		add_action( 'init', array( $this, 'load_textdomain' ) );
+		self::migrate_settings();
 
 		// Initialize gateways and admin functionality.
 		add_filter( 'woocommerce_payment_gateways', array( $this, 'add_gateways' ) );
-		add_filter( 'woocommerce_states', array( $this, 'customize_woocommerce_states' ) );
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'maybe_enqueue_gateway_admin_assets' ), 20 );
 		add_action( 'admin_init', array( $this, 'init_admin' ) );
@@ -60,14 +71,29 @@ final class Plugin {
 	}
 
 	/**
-	 * Load plugin text domain,
+	 * Copy the details of a store in test mode into the test fields, once. Before 3.4.1 there was
+	 * one set, used in whichever mode the store was in. It's a copy, so nothing is lost if the
+	 * store was only in test mode for a moment, or goes back to an older version.
 	 */
-	public function load_textdomain(): void {
-		load_plugin_textdomain(
-			'artspay',
-			false,
-			dirname( plugin_basename( ARTSPAY_PLUGIN_FILE ) ) . '/languages'
-		);
+	private static function migrate_settings(): void {
+		if ( get_option( 'artspay_settings_version' ) ) {
+			return;
+		}
+
+		$settings = get_option( 'woocommerce_fatzebra_settings' );
+		if ( is_array( $settings ) && 'yes' === ( $settings['sandbox_mode'] ?? 'yes' ) ) {
+			$copied = $settings;
+			foreach ( self::MODE_FIELDS as $key ) {
+				if ( ! empty( $settings[ $key ] ) && empty( $settings[ 'test_' . $key ] ) ) {
+					$copied[ 'test_' . $key ] = $settings[ $key ];
+				}
+			}
+			if ( $copied !== $settings ) {
+				update_option( 'woocommerce_fatzebra_settings', $copied );
+			}
+		}
+
+		update_option( 'artspay_settings_version', '3.4.1' );
 	}
 
 	/**
@@ -132,7 +158,7 @@ final class Plugin {
 		if ( 'woocommerce_page_wc-settings' !== $hook_suffix ) {
 			return;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only checks which settings screen is open.
 		if ( empty( $_GET['tab'] ) || 'checkout' !== $_GET['tab'] || empty( $_GET['section'] ) || 'fatzebra' !== $_GET['section'] ) {
 			return;
 		}
@@ -143,6 +169,8 @@ final class Plugin {
 			array(),
 			ARTSPAY_PLUGIN_VERSION
 		);
+
+		wp_enqueue_script( 'artspay-admin-settings', ARTSPAY_PLUGIN_URL . 'assets/js/artspay-admin-settings.js', array(), ARTSPAY_PLUGIN_VERSION, true );
 
 		$gateway = self::get_gateway();
 		if ( ! $gateway || 'express_checkouts' !== $gateway->get_current_settings_subpage() ) {
@@ -194,28 +222,6 @@ final class Plugin {
 			wp_send_json_error( null, 400 );
 		}
 		$gateway->ajax_three_ds_prepare();
-	}
-
-	/**
-	 * Customise states list.
-	 *
-	 * @param array $states States.
-	 *
-	 * @return array
-	 */
-	public function customize_woocommerce_states( array $states ): array {
-		$states['AU'] = array(
-			'ACT' => __( 'ACT', 'artspay' ),
-			'NSW' => __( 'NSW', 'artspay' ),
-			'NT'  => __( 'NT', 'artspay' ),
-			'QLD' => __( 'QLD', 'artspay' ),
-			'SA'  => __( 'SA', 'artspay' ),
-			'TAS' => __( 'TAS', 'artspay' ),
-			'VIC' => __( 'VIC', 'artspay' ),
-			'WA'  => __( 'WA', 'artspay' ),
-		);
-
-		return $states;
 	}
 
 	/**

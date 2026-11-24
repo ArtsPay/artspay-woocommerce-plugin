@@ -46,7 +46,13 @@ async function payWithHostedCard(page, cardNumber) {
   const frame = page.frameLocator('.artspay-hosted-card__iframe');
   await frame.locator('#payment_request_card_holder').fill('Test Buyer', { timeout: 30000 });
   await frame.locator('#payment_request_card_number').fill(cardNumber);
-  await frame.locator('#payment_request_expiry_date').pressSequentially('122030');
+  // Fat Zebra's expiry field moves the cursor just after it gets focus, so click, pause, then type
+  // the way a person does. Typing straight away puts the first digit in the wrong place.
+  const expiry = frame.locator('#payment_request_expiry_date');
+  await expiry.click();
+  await page.waitForTimeout(400);
+  await expiry.pressSequentially('122030', { delay: 50 });
+  await expect(expiry).toHaveValue('12/2030');
   await frame.locator('#payment_request_security_code').fill('123');
   await frame.locator('#pay-now').click();
 }
@@ -58,7 +64,8 @@ async function completeChallenge(page) {
     for (const frame of page.frames()) {
       if (!/cardinal|acs|challenge/i.test(frame.url())) continue;
       const input = frame.locator('input[type="text"], input[type="tel"], input[type="password"]').first();
-      if (await input.count()) {
+      // The bank's frames replace each other, so one can go away while it's being checked.
+      if (await input.count().catch(() => 0)) {
         await input.fill('1234');
         await frame.locator('input[type="submit"], button[type="submit"], button').first().click();
         return;

@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 # Build a versioned customer ZIP: artspay-woocommerce-X.Y.Z.zip + .sha256
 # Run from the plugin repository root, or: ./bin/build.sh
+#
+# ./bin/build.sh --wporg builds the WordPress.org package instead: releases/wporg/artspay-X.Y.Z.zip.
+# Same code, but in the folder WordPress.org uses, without the Update URI header (which would stop
+# updates from WordPress.org) and without the repository's Markdown files.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+MAIN_PHP="artspay-woocommerce.php"
 SLUG="artspay-woocommerce"
-MAIN_PHP="${SLUG}.php"
+WPORG=0
+if [[ "${1:-}" == "--wporg" ]]; then
+	WPORG=1
+	SLUG="artspay"
+fi
 
 if [[ ! -f "$MAIN_PHP" ]]; then
 	echo "build: expected ${MAIN_PHP} in ${ROOT}" >&2
@@ -26,7 +35,18 @@ if [[ -z "$VERSION" ]]; then
 	exit 1
 fi
 
+# The plugin header, the constant and the readme must agree, or stores see the wrong version.
+HEADER_VERSION="$(sed -n 's/^ \* Version: *\([^ ]*\).*/\1/p' "$MAIN_PHP")"
+STABLE_TAG="$(sed -n 's/^Stable tag: *\([^ ]*\).*/\1/p' readme.txt)"
+if [[ -z "${ARTSPAY_VERSION:-}" && ( "$VERSION" != "$HEADER_VERSION" || "$VERSION" != "$STABLE_TAG" ) ]]; then
+	echo "build: versions differ: constant ${VERSION}, header ${HEADER_VERSION}, readme ${STABLE_TAG}" >&2
+	exit 1
+fi
+
 RELEASES_DIR="${ROOT}/releases"
+if [[ "$WPORG" == 1 ]]; then
+	RELEASES_DIR="${RELEASES_DIR}/wporg"
+fi
 mkdir -p "$RELEASES_DIR"
 
 TMP="$(mktemp -d)"
@@ -49,7 +69,14 @@ if [[ -f "${ROOT}/.distignore" ]]; then
 	done < "${ROOT}/.distignore"
 fi
 
-rsync -a "${EXCLUDES[@]}" "${ROOT}/" "${STAGE}/"
+rsync -am "${EXCLUDES[@]}" "${ROOT}/" "${STAGE}/"
+
+if [[ "$WPORG" == 1 ]]; then
+	grep -v '^ \* Update URI:' "${STAGE}/${MAIN_PHP}" > "${STAGE}/${SLUG}.php"
+	rm "${STAGE}/${MAIN_PHP}"
+	rm -rf "${STAGE}/docs"
+	rm -f "${STAGE}"/*.md
+fi
 
 OUT_ZIP="${RELEASES_DIR}/${SLUG}-${VERSION}.zip"
 rm -f "${OUT_ZIP}" "${OUT_ZIP}.sha256"

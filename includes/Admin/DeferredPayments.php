@@ -9,6 +9,10 @@
 
 namespace ArtsPay\Admin;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\API\Client;
 use ArtsPay\Gateways\CreditCardGateway;
 use WC_Order;
@@ -134,7 +138,12 @@ class DeferredPayments {
 	 */
 	private function process_deferred_payment_capture( WC_Order $order ): void {
 		$cc_gateway = new CreditCardGateway();
-		$ip         = $cc_gateway->get_order_ip_address( $order );
+		$mode_error = $cc_gateway->get_order_mode_error( $order );
+		if ( '' !== $mode_error ) {
+			$this->redirect_with_error( $order, $mode_error );
+		}
+
+		$ip = $cc_gateway->get_order_ip_address( $order );
 
 		$params = array(
 			'card_token'  => $order->get_meta( 'Card Token' ),

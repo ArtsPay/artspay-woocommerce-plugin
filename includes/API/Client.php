@@ -7,6 +7,10 @@
 
 namespace ArtsPay\API;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Debug_Logger;
 use Exception;
 use WP_Error;

@@ -7,6 +7,10 @@
 
 namespace ArtsPay;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Writes to WooCommerce > Status > Logs with source {@see Debug_Logger::SOURCE}
  * (same naming pattern as Stripe's woocommerce-gateway-stripe).
@@ -49,6 +53,17 @@ final class Debug_Logger {
 			$message,
 			array_merge( $context, array( 'source' => self::SOURCE ) )
 		);
+	}
+
+	/**
+	 * Log a problem the store owner needs to know about, whether debug mode is on or not.
+	 *
+	 * @param string $message Log message. Must not contain card or credential data.
+	 */
+	public static function error( string $message ): void {
+		if ( function_exists( 'wc_get_logger' ) ) {
+			wc_get_logger()->error( $message, array( 'source' => self::SOURCE ) );
+		}
 	}
 
 	/**

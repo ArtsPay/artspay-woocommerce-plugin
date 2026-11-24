@@ -15,6 +15,9 @@
 node_modules
 vendor
 
+# WordPress.org listing images (uploaded to SVN, not shipped)
+.wordpress-org
+
 # Dev tooling & internal docs
 releases
 bin

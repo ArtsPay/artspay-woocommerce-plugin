@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Express;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Assets\Core;
 use ArtsPay\Gateways\CreditCardGateway;
 
@@ -44,7 +48,7 @@ final class ApplePay {
 	 * Whether Apple Pay express UI should be shown.
 	 */
 	public function is_express_enabled(): bool {
-		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) ) {
+		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) || $this->gateway->needs_setup() ) {
 			return false;
 		}
 		if ( 'yes' !== (string) $this->gateway->get_option( 'apple_pay_enabled', 'no' ) ) {
@@ -67,7 +71,7 @@ final class ApplePay {
 		if ( function_exists( 'is_order_received_page' ) && is_order_received_page() ) {
 			return;
 		}
-		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) ) {
+		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) || $this->gateway->needs_setup() ) {
 			return;
 		}
 
@@ -100,7 +104,7 @@ final class ApplePay {
 			'apple-pay-js-sdk',
 			'https://applepay.cdn-apple.com/jsapi/v1/apple-pay-sdk.js',
 			array(),
-			null,
+			null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion -- Apple versions this script itself.
 			true
 		);
 		wp_enqueue_script( 'apple-pay-js-sdk' );
@@ -242,10 +246,10 @@ final class ApplePay {
 
 		$apple_ok = $this->is_express_enabled();
 
-		$google_ok = ( 'yes' === (string) $this->gateway->get_option( 'enabled', 'no' ) )
+		$google_ok = ( 'yes' === (string) $this->gateway->get_option( 'enabled', 'no' ) && ! $this->gateway->needs_setup() )
 			&& ( 'yes' === (string) $this->gateway->get_option( 'google_pay_enabled', 'no' ) );
 		if ( $google_ok ) {
-			$merchant_id = trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) );
+			$merchant_id = $this->gateway->get_mode_option( 'google_pay_merchant_id' );
 			if ( '' === $merchant_id ) {
 				$google_ok = false;
 			}

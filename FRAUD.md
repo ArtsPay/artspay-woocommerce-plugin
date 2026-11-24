@@ -106,7 +106,7 @@ Fat Zebra documents **test billing emails** (for example `accept@email.com`, `ch
 
 ## 3DS (3-D Secure)
 
-Available from 3.2.0 with the **secure hosted card form**. Set it up under **Fraud & security → 3D Secure**. It needs 3D Secure turned on for the merchant account and an OAuth client from the Fat Zebra Merchant Dashboard.
+Available from 3.2.0 with the **secure hosted card form**. It needs 3D Secure turned on for the merchant account, and an OAuth client from the Fat Zebra Merchant Dashboard entered under **Account details** (test and live have their own). Then turn it on under **Fraud & security → 3D Secure**.
 
 How it runs:
 
@@ -115,11 +115,16 @@ How it runs:
 3. On `fz.sca.success` the result is posted with the checkout. The plugin keeps the documented fields (`sli`, `cavv`, `xid`, `ver`, `par`, `directory_server_txn_id`, `threeds_version`) and sends them under `extra` on the purchase.
 4. On `fz.sca.error` the payment is blocked and the customer can retry or use another card.
 
-Policy, matching ArtsPay's hosted checkout:
+Policy:
 
 - Any result fatzebra.js reports as success is accepted, including **attempted** and **not enrolled** (`ver: N`). The order note says whether liability shifted.
 - The server requires a 3DS result for hosted card payments while 3D Secure is on, so a request that skips the browser step is refused.
 - Deferred payments and $0 orders skip 3D Secure. Subscription renewals are merchant-initiated and are not verified.
 - The result is stored on the order as `_artspay_3ds_result`.
+
+When it can't start:
+
+- If Fat Zebra doesn't give the store an access token, card payments that need 3D Secure fail. The 3D Secure page says whether Fat Zebra accepts the OAuth details, the settings list shows **Needs setup**, and the failure is logged under **WooCommerce → Status → Logs** even with debug mode off.
+- At checkout, store managers see the reason. Customers see a general message and can try again or use another card.
 
 3D Secure and Forter are independent: both can run on the same charge.

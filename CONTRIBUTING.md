@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping improve WooCommerce ArtsPay Gateway.
+Thank you for helping improve ArtsPay for WooCommerce.
 
 ## Before you start
 
@@ -21,12 +21,14 @@ Thank you for helping improve WooCommerce ArtsPay Gateway.
 
 ## Releasing a build to customers
 
-1. Bump `ARTSPAY_PLUGIN_VERSION` and the `Version` header in [`artspay-woocommerce.php`](artspay-woocommerce.php).
+1. Bump `ARTSPAY_PLUGIN_VERSION` and the `Version` header in [`artspay-woocommerce.php`](artspay-woocommerce.php), and `Stable tag` in [`readme.txt`](readme.txt). The build stops if they differ.
 2. Append [`changelog.txt`](changelog.txt) with a dated `YYYY-MM-DD - version X.Y.Z` block.
-3. Push a tag matching `v<version>` (e.g. `v3.1.2`) on the release commit. [`.github/workflows/release.yml`](.github/workflows/release.yml) builds the ZIP with `bin/build.sh` and publishes it as a GitHub Release automatically — no manual upload needed.
+3. Run the browser tests in [`tests/e2e`](tests/e2e/README.md) against the sandbox, and test on a real store if the change touches payments. Add to [`docs/MIGRATION.md`](docs/MIGRATION.md) if an upgrade changes settings or behaviour.
+4. Merge to `main` with a **merge commit**, so the tag stays in its history.
+5. Push a tag matching `v<version>` (e.g. `v3.1.2`) on the release commit. [`.github/workflows/release.yml`](.github/workflows/release.yml) builds the ZIP with `bin/build.sh` and publishes it as a GitHub Release automatically — no manual upload needed.
 
 To build a ZIP locally instead (e.g. to test the packaging before tagging), run `./bin/build.sh` from the repo root; it writes `releases/artspay-woocommerce-<version>.zip` (+ `.sha256`). The `releases/` directory is gitignored—do not commit the ZIP.
 
 ## WordPress.org packaging
 
-If this plugin is ever published on WordPress.org, maintain a separate **`readme.txt`** in [WordPress readme format](https://developer.wordpress.org/plugins/wordpress-org/how-your-readme-txt-works/) in addition to this repository’s [`README.md`](README.md). Release metadata formats differ between `changelog.txt`, `readme.txt`, and GitHub—keep them consistent when you cut a release.
+`./bin/build.sh --wporg` builds the package for WordPress.org. [`readme.txt`](readme.txt) is the listing: keep the short description to 150 characters, the file under 10 KB, and the **External services** section in step with every host the plugin contacts. Older changelog entries live in `changelog.txt`. Listing images are in `.wordpress-org/`. CI runs [Plugin Check](https://wordpress.org/plugins/plugin-check/) on the package.

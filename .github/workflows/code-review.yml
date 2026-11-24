@@ -56,3 +56,19 @@ jobs:
             --report=checkstyle \
             -q --no-colors \
             . | cs2pr
+
+  plugin-check:
+    name: Plugin Check (WordPress.org package)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the WordPress.org package
+        run: |
+          ./bin/build.sh --wporg
+          unzip -q releases/wporg/artspay-*.zip -d build
+      - uses: WordPress/plugin-check-action@10857da14b6c2246d15402b3e69f777edcf8c12e # v1
+        with:
+          build-dir: ./build/artspay
+          slug: artspay

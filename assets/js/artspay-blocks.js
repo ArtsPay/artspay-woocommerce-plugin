@@ -202,6 +202,12 @@
       }
       var cancelled = false;
       setError('');
+      if (frame.current && !frame.current.firstChild) {
+        var loading = document.createElement('p');
+        loading.className = 'artspay-hosted-card__loading';
+        loading.textContent = cfg.strings.loading;
+        frame.current.appendChild(loading);
+      }
       fz.requestFormUrl(cfg)
         .then(function (url) {
           if (!cancelled && frame.current) {
@@ -294,7 +300,7 @@
       card
         ? h(
             'div',
-            { className: 'artspay-hosted-card__saved' },
+            { key: 'saved', className: 'artspay-hosted-card__saved' },
             h('span', { className: 'artspay-hosted-card__saved-label' }, fz.savedLabel(cfg, card)),
             ' ',
             h(
@@ -310,11 +316,10 @@
               cfg.strings.change
             )
           )
-        : h(
-            'div',
-            { className: 'artspay-hosted-card__frame', ref: frame },
-            h('p', { className: 'artspay-hosted-card__loading' }, cfg.strings.loading)
-          ),
+        : // mountFrame() fills this, so React must not have children in it: removing one that
+          // mountFrame() already removed crashes the payment method. The keys stop React from
+          // turning this element into the saved card.
+          h('div', { key: 'frame', className: 'artspay-hosted-card__frame', ref: frame }),
       error ? h('p', { className: 'artspay-hosted-card__error', role: 'alert' }, error) : null
     );
 

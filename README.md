@@ -1,4 +1,4 @@
-# WooCommerce ArtsPay Gateway
+# ArtsPay for WooCommerce
 
 Official ArtsPay payment integration for WooCommerce: accept cards via the Fat Zebra gateway, with an optional secure hosted card form, 3D Secure, fraud screening (Forter), captcha, and deferred capture. Supports WooCommerce Subscriptions.
 
@@ -20,7 +20,6 @@ This repository does not publish a formal L-n version support policy yet. Test c
 1. Download the plugin ZIP from [GitHub Releases](https://github.com/artspay/artspay-woocommerce-plugin/releases) (a `.sha256` checksum is published alongside each ZIP).
 2. In WordPress admin, go to **Plugins → Add New → Upload Plugin** and choose the ZIP.
 3. Click **Install Now**, then **Activate**.
-4. If the plugin name appears blank at first, the gateway may be whitelabelled: open **Plugins**, use **Manage** (or the gateway settings), and save to set the name.
 
 ## Quick Setup
 
@@ -28,24 +27,32 @@ Fastest path to a working sandbox checkout:
 
 1. Install and activate the plugin (see [Installation](#installation) above).
 2. Go to **WooCommerce → Settings → Payments** and enable **ArtsPay** (or **ArtsPay Credit Card**).
-3. Confirm **Sandbox Mode** is on — it's the default, and the plugin ships with Fat Zebra's public sandbox username, token, and shared secret pre-filled, so no credentials are required just to test.
+3. Under **Account details → Test**, enter your sandbox username, token and shared secret from ArtsPay, and confirm **Mode** is Test (the default). ArtsPay stays off the checkout until they're saved.
 4. Save changes.
 5. Run a test checkout with a [Sandbox test card](https://www.artspay.com/docs/developer/testing/test-card-numbers) to confirm everything works end-to-end.
-6. When you're ready to go live, follow [Configuration](#configuration) below to add production credentials and switch off Sandbox Mode.
+6. When you're ready to go live, follow [Configuration](#configuration) below to add production credentials and set **Mode** to Live.
 
 ## Configuration
 
 Open **WooCommerce → Settings → Payments → ArtsPay** (or **ArtsPay Credit Card**) to configure the gateway.
 
-### Sandbox & production credentials
+### Account details
 
-- **Sandbox mode** – uses Fat Zebra sandbox URLs and test credentials (defaults are the documented sandbox username/token `TEST` / `TEST` and shared secret).
-- **Production** – enter your live username, token, and shared secret from Fat Zebra / ArtsPay, and switch Sandbox Mode off.
+**Account details** has a **Test** and a **Live** tab, each with the gateway username, token and shared secret, plus the OAuth key and secret for 3D Secure. **Mode** decides which one customers use: the tabs only choose which you're editing. Each tab says whether it's ready. The plugin has no built-in credentials.
+
+Each order records its mode in `_artspay_mode`:
+
+| | Store in test mode | Store in live mode |
+|---|---|---|
+| **Test order** | Refund, capture and renew as normal | Refund only (in the sandbox) |
+| **Live order** | Refused, with the reason | Refund, capture and renew as normal |
+
+Orders from before 3.4.1 don't record a mode, so they use the store's current one.
 
 ### Card form
 
-- **On-site card form** (default): card fields sit in the checkout and post to your server, which sends them to Fat Zebra.
-- **Secure hosted form**: Fat Zebra's hosted payments page loads inside the checkout in tokenize-only mode. The customer presses **Pay now** in that form, Fat Zebra returns a card token, and the plugin charges the token. Card numbers never reach your server (PCI SAQ A). Needs the **Gateway Shared Secret**. WooCommerce's **Place order** button stays hidden until a card has been entered. The form's stylesheet (`assets/css/hosted-form.css`, full width and aligned left) is fetched by Fat Zebra from the store, so it's used on HTTPS stores only; other stores get ArtsPay's standard stylesheet from the CDN. The `artspay_hosted_card_css_url` filter changes it.
+- **On-site card form** (the default before 3.4.0, and kept by stores set up before then): card fields sit in the checkout and post to your server, which sends them to Fat Zebra.
+- **Secure hosted form** (default for new stores): Fat Zebra's hosted payments page loads inside the checkout in tokenize-only mode. The customer presses **Pay now** in that form, Fat Zebra returns a card token, and the plugin charges the token. Card numbers never reach your server (PCI SAQ A). Needs the **Shared secret**: without it ArtsPay doesn't appear at checkout. WooCommerce's **Place order** button stays hidden until a card has been entered. The form's stylesheet (`assets/css/hosted-form.css`, full width and aligned left) is fetched by Fat Zebra from the store, so it's used on HTTPS stores only; other stores get Fat Zebra's default look. The `artspay_hosted_card_css_url` filter changes it.
 
 Subscriptions, deferred payments, Forter, captcha and attempt limits work the same with either form, because the plugin still makes the charge.
 
@@ -55,7 +62,7 @@ Forter, 3D Secure and Captcha each have their own settings page, opened from the
 
 ### 3D Secure
 
-The plugin uses 3DS2 (EMV 3-D Secure), the current version. Needs the secure hosted form, 3D Secure turned on for the merchant account by ArtsPay, and an OAuth client (**Settings → OAuth Clients** in the Fat Zebra Merchant Dashboard). After the card is entered, fatzebra.js asks the customer's bank to verify the cardholder. Most customers pass without noticing. Some banks show a one-time code or app approval.
+The plugin uses 3DS2 (EMV 3-D Secure), the current version. Needs the secure hosted form, 3D Secure turned on for the merchant account by ArtsPay, and an OAuth client (**Settings → OAuth Clients** in the Fat Zebra Merchant Dashboard) entered under **Account details**. The 3D Secure page says whether Fat Zebra accepts it. After the card is entered, fatzebra.js asks the customer's bank to verify the cardholder. Most customers pass without noticing. Some banks show a one-time code or app approval.
 
 - A failed or errored check blocks the payment. The customer can try again or use another card.
 - A successful check (including "attempted" and "not enrolled" outcomes) is sent with the purchase, and the order gets a note saying whether liability shifted.
@@ -89,13 +96,13 @@ Always on. See [FRAUD.md](FRAUD.md#card-testing-protection) for the limits and f
 
 | Mode | Behaviour |
 |------|-----------|
-| **Inline (server)** | Default. Card fields post to your server; the plugin calls Fat Zebra `purchases` API. |
+| **Inline (server)** | On-site card form. Card fields post to your server; the plugin calls Fat Zebra `purchases` API. |
 | **Secure hosted form** | Fat Zebra's form (tokenize only) inside the checkout returns a card token. Optional 3D Secure runs on that token with fatzebra.js, then the plugin charges the token with the 3DS result under `extra`. |
 | **Google Pay / Apple Pay (wallets)** | When enabled, express buttons appear on the cart and checkout. The wallet token is charged through Fat Zebra's wallet purchase API. |
 
 ## Testing (sandbox)
 
-- Use **Sandbox mode** and Fat Zebra test credentials.
+- Set **Mode** to Test, with your Fat Zebra sandbox details.
 - **Fraud screening** (when enabled on the account): use billing email `accept@email.com`, `challenge@email.com`, or `deny@email.com` to simulate Accept / Challenge / Deny ([Fraud screening](https://www.artspay.com/docs/fraud-screening)).
 - Exercise checkout, refunds, deferred capture (if enabled), and subscription renewals on a staging site.
 
@@ -113,6 +120,8 @@ From the plugin repository root:
 
 This writes `releases/artspay-woocommerce-<version>.zip` (folder inside the archive: `artspay-woocommerce/`, ready for **Plugins → Add New → Upload**) and `releases/artspay-woocommerce-<version>.zip.sha256` for checksum verification. Excludes are listed in [`.distignore`](.distignore) (dev tooling, internal docs, VCS, and `releases/` itself).
 
+`./bin/build.sh --wporg` builds the WordPress.org package instead (`releases/wporg/artspay-<version>.zip`): the same code in the folder `artspay/`, without the `Update URI` header and the Markdown files. The build stops if the plugin header, constant and `Stable tag` don't match.
+
 To override the version embedded in the filename (e.g. a release candidate), set `ARTSPAY_VERSION` before running the script; otherwise the version is read from `ARTSPAY_PLUGIN_VERSION` in [`artspay-woocommerce.php`](artspay-woocommerce.php). Pushing a `v<version>` tag builds and publishes this ZIP automatically as a GitHub Release — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ### Quality checks
@@ -123,7 +132,7 @@ From the plugin root (no WordPress required):
 ./bin/check-php-syntax.sh
 ```
 
-This runs `php -l` on all `*.php` files. CI also runs a security-scoped PHPCS pass (WordPress escaping/nonce/SQL sniffs, see [`phpcs.xml`](phpcs.xml)) and CodeQL on every pull request — see [`.github/workflows/`](.github/workflows/).
+This runs `php -l` on all `*.php` files. CI also runs a security-scoped PHPCS pass (WordPress escaping/nonce/SQL sniffs, see [`phpcs.xml`](phpcs.xml)), [Plugin Check](https://wordpress.org/plugins/plugin-check/) on the WordPress.org package, and CodeQL on every pull request — see [`.github/workflows/`](.github/workflows/).
 
 ### Project layout
 
@@ -146,6 +155,7 @@ assets/js/
   artspay-fatzebra.js        # Hosted form and 3D Secure, shared by both checkouts
   artspay-hosted-card.js     # Hosted form on the classic checkout
   artspay-core.js
+  artspay-admin-settings.js  # Test and Live tabs in the settings
   artspay-checkout-autofill.js
   artspay-googlepay.js
   artspay-applepay.js
