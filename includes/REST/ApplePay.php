@@ -7,6 +7,11 @@
 
 namespace ArtsPay\REST;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+use ArtsPay\Debug_Logger;
 use ArtsPay\Gateways\CreditCardGateway;
 use WP_Error;
 use WP_REST_Request;
@@ -49,34 +54,69 @@ final class ApplePay {
 	 * Permission check (guest-safe nonce).
 	 */
 	public static function permission_check( WP_REST_Request $request ): bool {
-		$nonce = (string) $request->get_param( 'nonce' );
-		if ( '' !== $nonce && (bool) wp_verify_nonce( $nonce, 'artspay_applepay' ) ) {
+		if ( self::has_valid_nonce( $request ) ) {
 			return true;
 		}
 
+		// Guests on a cached checkout page can have an expired nonce, and refusing them would
+		// break Apple Pay on those stores. The request only asks Apple for a session for this
+		// store's own domain, the URL must be Apple's, and create_session() limits how many
+		// requests without a nonce one IP address can make.
+		return self::is_apple_validation_url( (string) $request->get_param( 'validationURL' ) );
+	}
+
+	/**
+	 * Whether the request carries a valid checkout nonce.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	private static function has_valid_nonce( WP_REST_Request $request ): bool {
+		$nonce = (string) $request->get_param( 'nonce' );
+
+		return '' !== $nonce && (bool) wp_verify_nonce( $nonce, 'artspay_applepay' );
+	}
+
+	/**
+	 * Whether a URL is one of Apple's merchant validation servers, including its regional ones.
+	 *
+	 * @param string $url URL.
+	 */
+	private static function is_apple_validation_url( string $url ): bool {
+		$url = trim( $url );
+
+		return 'https' === strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) )
+			&& 1 === preg_match( '/^(cn-)?apple-pay-gateway(-[a-z0-9-]+)?\.apple\.com$/', strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) ) );
+	}
+
+	/**
+	 * Count a request that came without a valid nonce.
+	 *
+	 * @param CreditCardGateway $gateway Gateway.
+	 *
+	 * @return bool False when the IP address has used all of its requests.
+	 */
+	private static function record_request_without_nonce( CreditCardGateway $gateway ): bool {
 		/**
-		 * Fallback for setups where page caching breaks WP nonces.
+		 * Filter how many Apple Pay sessions one IP address can ask for in an hour without a valid nonce.
 		 *
-		 * We still keep this endpoint safe by only allowing Apple Pay merchant validation URLs
-		 * (otherwise this could become an unauthenticated proxy to the upstream session endpoint).
+		 * @param int $limit Requests an hour.
 		 */
-		$validation_url = trim( (string) $request->get_param( 'validationURL' ) );
-		if ( '' === $validation_url ) {
+		$limit = (int) apply_filters( 'artspay_apple_pay_session_limit', 60 );
+		$key   = 'artspay_applepay_ip_' . md5( $gateway->get_rate_limit_ip() );
+		$entry = get_transient( $key );
+		if ( ! is_array( $entry ) ) {
+			$entry = array(
+				'count'   => 0,
+				'expires' => time() + HOUR_IN_SECONDS,
+			);
+		}
+		if ( $entry['count'] >= $limit ) {
 			return false;
 		}
+		++$entry['count'];
+		set_transient( $key, $entry, max( 1, $entry['expires'] - time() ) );
 
-		$host   = (string) wp_parse_url( $validation_url, PHP_URL_HOST );
-		$scheme = (string) wp_parse_url( $validation_url, PHP_URL_SCHEME );
-		if ( 'https' !== strtolower( $scheme ) || '' === $host ) {
-			return false;
-		}
-
-		$allowed_hosts = array(
-			'apple-pay-gateway.apple.com',
-			'apple-pay-gateway-cert.apple.com',
-		);
-
-		return in_array( strtolower( $host ), $allowed_hosts, true );
+		return true;
 	}
 
 	/**
@@ -91,6 +131,13 @@ final class ApplePay {
 		$validation_url = trim( (string) $request->get_param( 'validationURL' ) );
 		if ( '' === $validation_url ) {
 			return new WP_Error( 'artspay_applepay_missing_validation_url', 'Missing validationURL', array( 'status' => 400 ) );
+		}
+
+		if ( ! self::is_apple_validation_url( $validation_url ) ) {
+			return new WP_Error( 'artspay_applepay_bad_validation_url', 'validationURL is not an Apple Pay server', array( 'status' => 400 ) );
+		}
+		if ( ! self::has_valid_nonce( $request ) && ! self::record_request_without_nonce( $gateway ) ) {
+			return new WP_Error( 'artspay_applepay_rate_limited', 'Too many requests', array( 'status' => 429 ) );
 		}
 
 		$validation_host = strtolower( (string) wp_parse_url( $validation_url, PHP_URL_HOST ) );
@@ -156,13 +203,13 @@ final class ApplePay {
 		$body = isset( $response['body'] ) ? (string) $response['body'] : '';
 
 		if ( 200 !== $code ) {
+			Debug_Logger::log( sprintf( 'Apple Pay session request returned HTTP %d: %s', $code, wp_strip_all_tags( substr( $body, 0, 500 ) ) ), 'error' );
 			return new WP_Error(
 				'artspay_applepay_session_failed',
 				'Apple Pay session request failed',
 				array(
-					'status'   => 502,
-					'code'     => $code,
-					'response' => $body,
+					'status' => 502,
+					'code'   => $code,
 				)
 			);
 		}

@@ -1,31 +1,48 @@
 <?php
 /**
- * Plugin Name:       WooCommerce ArtsPay Gateway
- * Plugin URI:        https://artspay.com
+ * Plugin Name:       ArtsPay for WooCommerce
+ * Plugin URI:        https://www.artspay.com/docs/guides/wordpress-woocommerce
  * Update URI:        https://github.com/ArtsPay/artspay-woocommerce-plugin
- * Description:       Combine your current WordPress Woo Commerce installation with ArtsPay for a payments solution that gives back to the arts. Supports WooCommerce Subscriptions.
- * Version:           3.3.0
+ * Description:       Accept cards, Google Pay and Apple Pay in WooCommerce with ArtsPay, the payments company that gives back to the arts.
+ * Version:           3.4.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Requires Plugins:  woocommerce
  * Author:            ArtsPay
- * Author URI:        https://artspay.com
+ * Author URI:        https://www.artspay.com
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       artspay
- * Domain Path:       /languages
  *
  * @package ArtsPay
  */
 
-if ( ! defined( 'WPINC' ) ) {
-	die;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+// ArtsPay can be installed from WordPress.org and from a GitHub ZIP, in different folders. Both
+// define the same classes and gateway, so only the first one loaded may run.
+if ( defined( 'ARTSPAY_PLUGIN_VERSION' ) ) {
+	add_action(
+		'admin_notices',
+		function (): void {
+			if ( ! current_user_can( 'activate_plugins' ) ) {
+				return;
+			}
+			echo '<div class="notice notice-warning"><p>';
+			echo esc_html__( 'ArtsPay is installed twice, and only one copy is running. Deactivate the copy you don\'t want on the Plugins page. Both use the same settings, so nothing is lost.', 'artspay' );
+			echo '</p></div>';
+		}
+	);
+
+	return;
 }
 
 define( 'ARTSPAY_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ARTSPAY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-const ARTSPAY_PLUGIN_VERSION = '3.3.0';
+const ARTSPAY_PLUGIN_VERSION = '3.4.0';
 const ARTSPAY_PLUGIN_FILE    = __FILE__;
 
 spl_autoload_register(

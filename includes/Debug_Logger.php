@@ -7,6 +7,10 @@
 
 namespace ArtsPay;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Writes to WooCommerce > Status > Logs with source {@see Debug_Logger::SOURCE}
  * (same naming pattern as Stripe's woocommerce-gateway-stripe).

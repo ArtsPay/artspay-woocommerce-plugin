@@ -1,4 +1,4 @@
-# WooCommerce ArtsPay Gateway
+# ArtsPay for WooCommerce
 
 Official ArtsPay payment integration for WooCommerce: accept cards via the Fat Zebra gateway, with an optional secure hosted card form, 3D Secure, fraud screening (Forter), captcha, and deferred capture. Supports WooCommerce Subscriptions.
 
@@ -20,7 +20,6 @@ This repository does not publish a formal L-n version support policy yet. Test c
 1. Download the plugin ZIP from [GitHub Releases](https://github.com/artspay/artspay-woocommerce-plugin/releases) (a `.sha256` checksum is published alongside each ZIP).
 2. In WordPress admin, go to **Plugins → Add New → Upload Plugin** and choose the ZIP.
 3. Click **Install Now**, then **Activate**.
-4. If the plugin name appears blank at first, the gateway may be whitelabelled: open **Plugins**, use **Manage** (or the gateway settings), and save to set the name.
 
 ## Quick Setup
 
@@ -28,10 +27,10 @@ Fastest path to a working sandbox checkout:
 
 1. Install and activate the plugin (see [Installation](#installation) above).
 2. Go to **WooCommerce → Settings → Payments** and enable **ArtsPay** (or **ArtsPay Credit Card**).
-3. Confirm **Sandbox Mode** is on — it's the default, and the plugin ships with Fat Zebra's public sandbox username, token, and shared secret pre-filled, so no credentials are required just to test.
+3. Enter your sandbox username, token and shared secret from ArtsPay, and confirm **Test Mode** is on (the default). ArtsPay stays off the checkout until they're saved.
 4. Save changes.
 5. Run a test checkout with a [Sandbox test card](https://www.artspay.com/docs/developer/testing/test-card-numbers) to confirm everything works end-to-end.
-6. When you're ready to go live, follow [Configuration](#configuration) below to add production credentials and switch off Sandbox Mode.
+6. When you're ready to go live, follow [Configuration](#configuration) below to add production credentials and switch off Test Mode.
 
 ## Configuration
 
@@ -39,13 +38,13 @@ Open **WooCommerce → Settings → Payments → ArtsPay** (or **ArtsPay Credit 
 
 ### Sandbox & production credentials
 
-- **Sandbox mode** – uses Fat Zebra sandbox URLs and test credentials (defaults are the documented sandbox username/token `TEST` / `TEST` and shared secret).
+- **Sandbox mode** – uses Fat Zebra sandbox URLs with your sandbox credentials. The plugin has no built-in credentials.
 - **Production** – enter your live username, token, and shared secret from Fat Zebra / ArtsPay, and switch Sandbox Mode off.
 
 ### Card form
 
-- **On-site card form** (default): card fields sit in the checkout and post to your server, which sends them to Fat Zebra.
-- **Secure hosted form**: Fat Zebra's hosted payments page loads inside the checkout in tokenize-only mode. The customer presses **Pay now** in that form, Fat Zebra returns a card token, and the plugin charges the token. Card numbers never reach your server (PCI SAQ A). Needs the **Gateway Shared Secret**. WooCommerce's **Place order** button stays hidden until a card has been entered. The form's stylesheet (`assets/css/hosted-form.css`, full width and aligned left) is fetched by Fat Zebra from the store, so it's used on HTTPS stores only; other stores get ArtsPay's standard stylesheet from the CDN. The `artspay_hosted_card_css_url` filter changes it.
+- **On-site card form** (the default before 3.4.0, and kept by stores set up before then): card fields sit in the checkout and post to your server, which sends them to Fat Zebra.
+- **Secure hosted form** (default for new stores): Fat Zebra's hosted payments page loads inside the checkout in tokenize-only mode. The customer presses **Pay now** in that form, Fat Zebra returns a card token, and the plugin charges the token. Card numbers never reach your server (PCI SAQ A). Needs the **Gateway Shared Secret**: without it ArtsPay doesn't appear at checkout. WooCommerce's **Place order** button stays hidden until a card has been entered. The form's stylesheet (`assets/css/hosted-form.css`, full width and aligned left) is fetched by Fat Zebra from the store, so it's used on HTTPS stores only; other stores get Fat Zebra's default look. The `artspay_hosted_card_css_url` filter changes it.
 
 Subscriptions, deferred payments, Forter, captcha and attempt limits work the same with either form, because the plugin still makes the charge.
 
@@ -89,7 +88,7 @@ Always on. See [FRAUD.md](FRAUD.md#card-testing-protection) for the limits and f
 
 | Mode | Behaviour |
 |------|-----------|
-| **Inline (server)** | Default. Card fields post to your server; the plugin calls Fat Zebra `purchases` API. |
+| **Inline (server)** | On-site card form. Card fields post to your server; the plugin calls Fat Zebra `purchases` API. |
 | **Secure hosted form** | Fat Zebra's form (tokenize only) inside the checkout returns a card token. Optional 3D Secure runs on that token with fatzebra.js, then the plugin charges the token with the 3DS result under `extra`. |
 | **Google Pay / Apple Pay (wallets)** | When enabled, express buttons appear on the cart and checkout. The wallet token is charged through Fat Zebra's wallet purchase API. |
 
@@ -112,6 +111,8 @@ From the plugin repository root:
 ```
 
 This writes `releases/artspay-woocommerce-<version>.zip` (folder inside the archive: `artspay-woocommerce/`, ready for **Plugins → Add New → Upload**) and `releases/artspay-woocommerce-<version>.zip.sha256` for checksum verification. Excludes are listed in [`.distignore`](.distignore) (dev tooling, internal docs, VCS, and `releases/` itself).
+
+`./bin/build.sh --wporg` builds the WordPress.org package instead (`releases/wporg/artspay-<version>.zip`): the same code in the folder `artspay/`, without the `Update URI` header and the Markdown files. The build stops if the plugin header, constant and `Stable tag` don't match.
 
 To override the version embedded in the filename (e.g. a release candidate), set `ARTSPAY_VERSION` before running the script; otherwise the version is read from `ARTSPAY_PLUGIN_VERSION` in [`artspay-woocommerce.php`](artspay-woocommerce.php). Pushing a `v<version>` tag builds and publishes this ZIP automatically as a GitHub Release — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 

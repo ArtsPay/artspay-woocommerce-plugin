@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Express;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Assets\Core;
 use ArtsPay\Gateways\CreditCardGateway;
 
@@ -56,7 +60,7 @@ final class GooglePay {
 		$GLOBALS[ $key ] = true;
 
 		$google_ok = $this->is_express_enabled();
-		$apple_ok  = ( 'yes' === (string) $this->gateway->get_option( 'enabled', 'no' ) )
+		$apple_ok  = ( 'yes' === (string) $this->gateway->get_option( 'enabled', 'no' ) && ! $this->gateway->needs_setup() )
 			&& ( 'yes' === (string) $this->gateway->get_option( 'apple_pay_enabled', 'no' ) )
 			&& ( WC()->cart && ! WC()->cart->is_empty() )
 			&& ( $this->gateway->is_sandbox_mode() || is_ssl() );
@@ -94,7 +98,7 @@ final class GooglePay {
 	 * Whether Google Pay express UI should be shown.
 	 */
 	public function is_express_enabled(): bool {
-		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) ) {
+		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) || $this->gateway->needs_setup() ) {
 			return false;
 		}
 		if ( 'yes' !== (string) $this->gateway->get_option( 'google_pay_enabled', 'no' ) ) {
@@ -121,7 +125,7 @@ final class GooglePay {
 		if ( function_exists( 'is_order_received_page' ) && is_order_received_page() ) {
 			return;
 		}
-		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) ) {
+		if ( 'yes' !== (string) $this->gateway->get_option( 'enabled', 'no' ) || $this->gateway->needs_setup() ) {
 			return;
 		}
 

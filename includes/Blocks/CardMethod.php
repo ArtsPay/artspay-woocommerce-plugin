@@ -11,6 +11,10 @@
 
 namespace ArtsPay\Blocks;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Gateways\CreditCardGateway;
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 
@@ -52,10 +56,10 @@ final class CardMethod extends AbstractPaymentMethodType {
 	}
 
 	/**
-	 * Whether ArtsPay is switched on.
+	 * Whether ArtsPay is switched on and set up.
 	 */
 	public function is_active(): bool {
-		return 'yes' === $this->get_setting( 'enabled', 'no' );
+		return 'yes' === $this->get_setting( 'enabled', 'no' ) && is_array( $this->settings ) && CreditCardGateway::has_required_credentials( $this->settings );
 	}
 
 	/**
@@ -88,7 +92,7 @@ final class CardMethod extends AbstractPaymentMethodType {
 					wp_register_script( 'google-recaptcha', 'https://www.google.com/recaptcha/api.js?render=' . rawurlencode( (string) $captcha['site_key'] ), array(), null, true ); // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
 					$deps[] = 'google-recaptcha';
 				} elseif ( 'cloudflare' === $captcha['provider'] ) {
-					wp_register_script( 'cloudflare-turnstile', 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', array(), null, true ); // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
+					wp_register_script( 'cloudflare-turnstile', 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', array(), null, true ); // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion, PluginCheck.CodeAnalysis.EnqueuedResourceOffloading.OffloadedContent -- Cloudflare requires Turnstile to load from its own servers. Only used when the merchant chooses it.
 					$deps[] = 'cloudflare-turnstile';
 				}
 			}

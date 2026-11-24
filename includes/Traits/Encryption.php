@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Traits;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Encryption trait.
  */

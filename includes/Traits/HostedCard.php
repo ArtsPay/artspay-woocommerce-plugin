@@ -12,6 +12,10 @@
 
 namespace ArtsPay\Traits;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Debug_Logger;
 use WC_Order;
 
@@ -158,14 +162,14 @@ trait HostedCard {
 	/**
 	 * Stylesheet for the hosted card form. Fat Zebra fetches it from its own servers, so the
 	 * plugin's copy (full width, aligned left) is used only when the store is on HTTPS. Otherwise
-	 * ArtsPay's standard style from the CDN.
+	 * Fat Zebra's default style.
 	 *
 	 * @return string
 	 */
 	private function get_default_hosted_form_css_url(): string {
 		$url = ARTSPAY_PLUGIN_URL . 'assets/css/hosted-form.css';
 		if ( 0 !== strpos( $url, 'https://' ) ) {
-			return 'https://cdn.artspay.com/vendor/v2/fatzebra.css';
+			return '';
 		}
 
 		return add_query_arg( 'ver', ARTSPAY_PLUGIN_VERSION, $url );

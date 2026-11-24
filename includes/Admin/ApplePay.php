@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Admin;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Gateways\CreditCardGateway;
 
 /**
@@ -56,15 +60,15 @@ final class ApplePay {
 		if ( ! $screen instanceof \WP_Screen || 'woocommerce_page_wc-settings' !== $screen->id ) {
 			return;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only checks which settings screen is open.
 		if ( empty( $_GET['tab'] ) || 'checkout' !== $_GET['tab'] ) {
 			return;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only checks which settings screen is open.
 		if ( empty( $_GET['section'] ) || 'fatzebra' !== $_GET['section'] ) {
 			return;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only checks which settings screen is open.
 		$express = isset( $_GET['artspay_express'] ) ? sanitize_key( (string) wp_unslash( $_GET['artspay_express'] ) ) : '';
 		if ( 'express_checkouts' !== $express ) {
 			return;

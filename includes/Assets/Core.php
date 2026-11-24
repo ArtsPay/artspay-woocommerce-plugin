@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Assets;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Core frontend assets registration (single registration point).
  */

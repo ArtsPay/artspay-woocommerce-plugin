@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Gateways;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\API\Client;
 use ArtsPay\Admin\ApplePay as ApplePayAdmin;
 use ArtsPay\Debug_Logger;
@@ -200,10 +204,55 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 */
 	public function get_gateway_credentials(): array {
 		return array(
-			'username'      => $this->get_option( 'username', 'TEST' ),
-			'api_token'     => $this->get_option( 'token', 'TEST' ),
-			'shared_secret' => $this->get_option( 'shared_secret', '033bd94b11' ),
+			'username'      => $this->get_option( 'username' ),
+			'api_token'     => $this->get_option( 'token' ),
+			'shared_secret' => $this->get_option( 'shared_secret' ),
 		);
+	}
+
+	/**
+	 * Card form used when the store hasn't chosen one. New stores get the hosted form, which keeps
+	 * card numbers off their server. Stores set up before 3.4.0 stay on the on-site form.
+	 */
+	private static function default_card_form(): string {
+		$saved = get_option( 'woocommerce_fatzebra_settings' );
+
+		return is_array( $saved ) && array() !== $saved ? 'onsite' : 'hosted';
+	}
+
+	/**
+	 * Whether the settings hold everything needed to take a payment. The hosted form also needs
+	 * the shared secret: without it the store must not fall back to the on-site form.
+	 *
+	 * @param array $settings Gateway settings.
+	 */
+	public static function has_required_credentials( array $settings ): bool {
+		$required = array( 'username', 'token' );
+		if ( 'hosted' === ( $settings['card_form'] ?? self::default_card_form() ) ) {
+			$required[] = 'shared_secret';
+		}
+
+		foreach ( $required as $key ) {
+			if ( '' === trim( (string) ( $settings[ $key ] ?? '' ) ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Whether WooCommerce should ask the merchant to finish setup before ArtsPay can be enabled.
+	 */
+	public function needs_setup(): bool {
+		return ! self::has_required_credentials( $this->settings );
+	}
+
+	/**
+	 * Hide ArtsPay at checkout until it can take payments.
+	 */
+	public function is_available(): bool {
+		return parent::is_available() && ! $this->needs_setup();
 	}
 
 	/**
@@ -426,7 +475,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'title'       => esc_html__( 'Gateway Username', 'artspay' ),
 				'type'        => 'text',
 				'description' => esc_html__( 'The Gateway Authentication Username', 'artspay' ),
-				'default'     => 'TEST',
+				'default'     => '',
 				// Not a WP login; reduces Safari/iCloud Keychain treating the settings form as a credential form.
 				'custom_attributes' => array(
 					'autocomplete'  => 'off',
@@ -437,13 +486,13 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'title'       => esc_html__( 'Gateway Token', 'artspay' ),
 				'type'        => 'text',
 				'description' => esc_html__( 'The Gateway Authentication Token', 'artspay' ),
-				'default'     => 'TEST',
+				'default'     => '',
 			),
 			'shared_secret'      => array(
 				'title'       => esc_html__( 'Gateway Shared Secret', 'artspay' ),
 				'type'        => 'text',
 				'description' => esc_html__( 'Fat Zebra\'s shared secret (PayNow secret) for your merchant account. Required for the secure hosted card form and 3D Secure.', 'artspay' ),
-				'default'     => '033bd94b11',
+				'default'     => '',
 				'custom_attributes' => array(
 					'autocomplete'  => 'off',
 					'data-lpignore' => 'true',
@@ -453,7 +502,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'title'       => esc_html__( 'Card form', 'artspay' ),
 				'type'        => 'select',
 				'description' => esc_html__( 'On-site: card fields sit in your checkout and card details pass through your web server. Secure hosted form: Fat Zebra\'s card form loads inside your checkout, so card numbers go straight to Fat Zebra and never reach your server. The hosted form is required for 3D Secure.', 'artspay' ),
-				'default'     => 'onsite',
+				'default'     => self::default_card_form(),
 				'options'     => array(
 					'onsite' => esc_html__( 'On-site card form', 'artspay' ),
 					'hosted' => esc_html__( 'Secure hosted form (Fat Zebra)', 'artspay' ),
@@ -504,7 +553,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			'google_pay_button_action' => array(
 				'title'       => esc_html__( 'Button action', 'artspay' ),
 				'type'        => 'select',
-				'description' => esc_html__( 'Label shown on both wallet buttons (Google Pay API buttonType and Apple Pay web button type). You may comment out rows in the options array below to hide choices.', 'artspay' ),
+				'description' => esc_html__( 'Label shown on both wallet buttons (Google Pay API buttonType and Apple Pay web button type).', 'artspay' ),
 				'default'     => 'buy',
 				'options'     => array(
 					'plain'    => esc_html__( 'Plain (logo only)', 'artspay' ),
@@ -683,7 +732,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			'apple-pay-js-sdk',
 			'https://applepay.cdn-apple.com/jsapi/v1/apple-pay-sdk.js',
 			array(),
-			null,
+			null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion -- Apple versions this script itself.
 			true
 		);
 		wp_enqueue_script( 'apple-pay-js-sdk' );
@@ -761,7 +810,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 */
 	private function get_gateway_settings_sections(): array {
 		$docs_url    = apply_filters( 'artspay_docs_url', 'https://www.artspay.com/docs/guides/wordpress-woocommerce' );
-		$support_url = apply_filters( 'artspay_support_url', 'https://artspay.com' );
+		$support_url = apply_filters( 'artspay_support_url', 'https://www.artspay.com/contact-us' );
 
 		$general_links = array(
 			array(
@@ -777,10 +826,17 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			);
 		}
 
+		if ( $this->needs_setup() ) {
+			$general_links[] = array(
+				'label' => esc_html__( 'Sign up for ArtsPay', 'artspay' ),
+				'url'   => 'https://www.artspay.com/signup',
+			);
+		}
+
 		return array(
 			'general' => array(
 				'title'       => esc_html__( 'General', 'artspay' ),
-				'description' => esc_html__( 'Turn ArtsPay on or off for checkout, and use sandbox mode to run test transactions without charging real cards.', 'artspay' ),
+				'description' => esc_html__( 'Turn ArtsPay on or off for checkout, and use test mode to run test transactions without charging real cards.', 'artspay' ),
 				'fields'      => array(
 					'enabled',
 					'sandbox_mode',
@@ -789,7 +845,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			),
 			'account' => array(
 				'title'       => esc_html__( 'Account details', 'artspay' ),
-				'description' => esc_html__( 'Gateway credentials from Fat Zebra, optional card logos, and deferred capture settings.', 'artspay' ),
+				'description' => esc_html__( 'Gateway details from ArtsPay, optional card logos, and deferred capture settings. ArtsPay appears at checkout once these are saved.', 'artspay' ),
 				'fields'      => array(
 					'show_card_logos',
 					'username',
@@ -904,7 +960,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 					),
 					array(
 						'label' => esc_html__( 'Cloudflare Turnstile', 'artspay' ),
-						'url'   => 'https://developers.cloudflare.com/turnstile/',
+						'url'   => 'https://developers.cloudflare.com/turnstile/', // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- A link to documentation. Nothing is loaded from it.
 					),
 				),
 			),
@@ -948,7 +1004,11 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * subset of fields; without protection, missing fields (including `enabled`) are cleared.
 	 */
 	public function process_admin_options(): void {
-		$existing   = get_option( $this->get_option_key(), array() );
+		$existing = get_option( $this->get_option_key(), array() );
+		if ( ! is_array( $existing ) || array() === $existing ) {
+			// First save: fields that aren't on this screen start from their defaults, not blank.
+			$existing = wp_list_pluck( $this->get_form_fields(), 'default' );
+		}
 		$legacy_gw  = isset( $existing['google_pay_gateway_merchant_id'] ) ? trim( (string) $existing['google_pay_gateway_merchant_id'] ) : '';
 		$prev_merch = isset( $existing['google_pay_merchant_id'] ) ? trim( (string) $existing['google_pay_merchant_id'] ) : '';
 
@@ -1520,7 +1580,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			return;
 		}
 
-		$docs_url = plugins_url( 'docs/APPLE-PAY-WEB.md', ARTSPAY_PLUGIN_FILE );
+		$docs_url = 'https://www.artspay.com/docs/developer/wallets/apple-pay';
 
 		echo '<div class="notice notice-error inline"><p>';
 		echo esc_html__( 'Live Google Pay and Apple Pay require HTTPS on your store. Apple Pay domain verification usually still expects a real HTTPS hostname even in sandbox.', 'artspay' );
@@ -1847,13 +1907,9 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 				case 4: // Exception caught, something bad happened. Data is exception.
 				default:
-					wc_add_notice( 'Unknown error.', 'error' );
-					$order->add_order_note(
-						sprintf( /* translators: %s is the error data */
-							__( 'Unknown Error (exception): %s', 'artspay' ),
-							print_r( $result->get_error_data(), true ) // phpcs:ignore WordPress.PHP.DevelopmentFunctions
-						)
-					);
+					wc_add_notice( __( 'The payment could not be processed. Please try again.', 'artspay' ), 'error' );
+					/* translators: %s: error message */
+					$order->add_order_note( sprintf( __( 'Payment failed with an unexpected error: %s', 'artspay' ), $result->get_error_message() ) );
 					break;
 			}
 
@@ -2315,6 +2371,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		$summary = preg_replace( '/\s+/', ' ', (string) $summary );
 		$summary = trim( (string) $summary );
 		if ( '' === $summary ) {
+			/* translators: %s: order number */
 			$summary = sprintf( __( 'Order %s', 'artspay' ), (string) $order->get_order_number() );
 		}
 

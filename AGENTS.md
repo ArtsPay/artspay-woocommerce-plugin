@@ -4,7 +4,7 @@ Guidance for coding agents and contributors working in this repository.
 
 ## Project overview
 
-**WooCommerce ArtsPay Gateway** connects a WooCommerce store to **ArtsPay** / **Fat Zebra** for card processing. The main gateway class handles inline card flows, subscriptions, refunds, optional **Forter** fraud screening, captcha, 3D Secure with the secure hosted card form, and **Google Pay** / **Apple Pay** express checkout. It works on the classic checkout and the block Cart and Checkout.
+**ArtsPay for WooCommerce** connects a WooCommerce store to **ArtsPay** / **Fat Zebra** for card processing. The main gateway class handles inline card flows, subscriptions, refunds, optional **Forter** fraud screening, captcha, 3D Secure with the secure hosted card form, and **Google Pay** / **Apple Pay** express checkout. It works on the classic checkout and the block Cart and Checkout.
 
 **Requirements:** PHP 8.0+, WordPress and WooCommerce per [`artspay-woocommerce.php`](artspay-woocommerce.php) headers. No Node/npm or Composer toolchain for builds (static JS/CSS only).
 
@@ -36,7 +36,7 @@ flowchart LR
   gateway --> client
 ```
 
-- **`Plugin`** – Registers the gateway with WooCommerce, admin hooks, text domain, optional admin asset enqueue for gateway settings CSS (and Google Pay preview when wallets are enabled).
+- **`Plugin`** – Registers the gateway with WooCommerce, admin hooks, optional admin asset enqueue for gateway settings CSS (and Google Pay preview when wallets are enabled).
 - **`CreditCardGateway`** – Extends WooCommerce’s card gateway: settings UI, `process_payment`, subscriptions, fraud payload, captcha, wallet token handling when enabled.
 - **`ArtsPay\API\Client`** – HTTP calls to Fat Zebra (purchases, refunds, wallet purchases, etc.).
 - **`ArtsPay\Express\GooglePay`** / **`ApplePay`** – Wallet buttons on the classic checkout, plus `get_blocks_config()` for the block checkout.
@@ -62,6 +62,7 @@ flowchart LR
 | PHP syntax (all files) | `./bin/check-php-syntax.sh` from the plugin root (also runs in CI) |
 | Security-scoped lint | `phpcs --standard=phpcs.xml .` (WordPress escaping/nonce/SQL sniffs; also runs in CI, non-blocking) |
 | Customer release ZIP (local) | `./bin/build.sh` → `releases/artspay-woocommerce-<version>.zip` (+ `.sha256`); see [`.distignore`](.distignore) |
+| WordPress.org package (local) | `./bin/build.sh --wporg` → `releases/wporg/artspay-<version>.zip`. Listing images are in `.wordpress-org/` |
 | Customer release ZIP (published) | Push tag `v<version>` → `.github/workflows/release.yml` builds and publishes a GitHub Release automatically |
 | Single file syntax | `php -l path/to/file.php` |
 | Gateway settings in WP | **WooCommerce → Settings → Payments → ArtsPay** (`section=fatzebra`) |
@@ -73,13 +74,15 @@ flowchart LR
 - **Settings merges** – `CreditCardGateway::process_admin_options()` merges partial saves from sub-pages (`get_settings_subpages()`: Express checkouts, Forter, 3D Secure, Captcha) so unrelated options are not wiped; changing this risks clearing `enabled` or merchant credentials. New sub-page fields go in that registry.
 - **Order data** – Always through `$order->get_meta()` / `update_meta_data()` / `save()`, never `*_post_meta()`, so it works with HPOS (declared in `artspay-woocommerce.php`). Keep existing meta key names so older orders still read.
 - **References** – Use `new_payment_reference( $order_id )` for every Fat Zebra charge. Fat Zebra rejects a reused reference.
+- **Two channels** – The GitHub ZIP (`artspay-woocommerce/`) must keep its `Update URI` header, and the WordPress.org package (`artspay/`) must not have one. Never change the gateway ID `fatzebra` or `woocommerce_fatzebra_settings`.
+- **Plugin Check** – Must stay at zero errors. An ignore comment needs a reason a WordPress.org reviewer would accept.
 - **Browser tests** – `tests/e2e` (Playwright, see its README). Run before a release and after checkout, 3DS or settings changes.
 - **Block express methods** – Call `onClose()` when a wallet checkout fails, or WooCommerce stays in express mode with the other payment options hidden.
 
 ## Testing
 
 - **Manual:** Fat Zebra sandbox credentials, WooCommerce checkout, order-pay, refunds, subscriptions as applicable.
-- **Automated in repo:** PHP syntax check, security-scoped PHPCS (WordPress escaping/nonce/SQL sniffs), and CodeQL — all run in CI (`.github/workflows/`) on every pull request; no PHPUnit suite yet.
+- **Automated in repo:** PHP syntax check, security-scoped PHPCS (WordPress escaping/nonce/SQL sniffs), Plugin Check on the WordPress.org package, and CodeQL — all run in CI (`.github/workflows/`) on every pull request; no PHPUnit suite yet.
 - **Browser (local, not CI):** `tests/e2e` builds a throwaway SQLite store and runs checkout, 3D Secure and settings tests against the Fat Zebra sandbox. See `tests/e2e/README.md`.
 
 ## Release hygiene

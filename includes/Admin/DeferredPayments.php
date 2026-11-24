@@ -9,6 +9,10 @@
 
 namespace ArtsPay\Admin;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\API\Client;
 use ArtsPay\Gateways\CreditCardGateway;
 use WC_Order;

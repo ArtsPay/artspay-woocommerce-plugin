@@ -7,6 +7,10 @@
 
 namespace ArtsPay\Traits;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Debug_Logger;
 use WC_Order;
 use WP_Error;

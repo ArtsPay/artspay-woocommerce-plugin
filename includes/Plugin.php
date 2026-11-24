@@ -7,6 +7,10 @@
 
 namespace ArtsPay;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use ArtsPay\Admin\ApplePay as ApplePayAdmin;
 use ArtsPay\Gateways\CreditCardGateway;
 
@@ -25,11 +29,8 @@ final class Plugin {
 	 * Constructor.
 	 */
 	private function __construct() {
-		add_action( 'init', array( $this, 'load_textdomain' ) );
-
 		// Initialize gateways and admin functionality.
 		add_filter( 'woocommerce_payment_gateways', array( $this, 'add_gateways' ) );
-		add_filter( 'woocommerce_states', array( $this, 'customize_woocommerce_states' ) );
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'maybe_enqueue_gateway_admin_assets' ), 20 );
 		add_action( 'admin_init', array( $this, 'init_admin' ) );
@@ -57,17 +58,6 @@ final class Plugin {
 		}
 
 		return self::$instance;
-	}
-
-	/**
-	 * Load plugin text domain,
-	 */
-	public function load_textdomain(): void {
-		load_plugin_textdomain(
-			'artspay',
-			false,
-			dirname( plugin_basename( ARTSPAY_PLUGIN_FILE ) ) . '/languages'
-		);
 	}
 
 	/**
@@ -132,7 +122,7 @@ final class Plugin {
 		if ( 'woocommerce_page_wc-settings' !== $hook_suffix ) {
 			return;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only checks which settings screen is open.
 		if ( empty( $_GET['tab'] ) || 'checkout' !== $_GET['tab'] || empty( $_GET['section'] ) || 'fatzebra' !== $_GET['section'] ) {
 			return;
 		}
@@ -194,28 +184,6 @@ final class Plugin {
 			wp_send_json_error( null, 400 );
 		}
 		$gateway->ajax_three_ds_prepare();
-	}
-
-	/**
-	 * Customise states list.
-	 *
-	 * @param array $states States.
-	 *
-	 * @return array
-	 */
-	public function customize_woocommerce_states( array $states ): array {
-		$states['AU'] = array(
-			'ACT' => __( 'ACT', 'artspay' ),
-			'NSW' => __( 'NSW', 'artspay' ),
-			'NT'  => __( 'NT', 'artspay' ),
-			'QLD' => __( 'QLD', 'artspay' ),
-			'SA'  => __( 'SA', 'artspay' ),
-			'TAS' => __( 'TAS', 'artspay' ),
-			'VIC' => __( 'VIC', 'artspay' ),
-			'WA'  => __( 'WA', 'artspay' ),
-		);
-
-		return $states;
 	}
 
 	/**

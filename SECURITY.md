@@ -8,7 +8,7 @@ Security fixes are applied to the current maintenance line of the plugin. Use th
 
 **Please do not** open a public GitHub issue for undisclosed security vulnerabilities.
 
-Instead, report details privately to the ArtsPay team through the contact channel you use for merchant support (e.g. your ArtsPay representative or the security contact your organization has on file).
+Instead, report details privately to the ArtsPay team through the contact channel you use for merchant support, or by email to support@artspay.com.
 
 Include:
 

@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<ruleset name="WooCommerce ArtsPay Gateway">
+<ruleset name="ArtsPay for WooCommerce">
     <description>Security-focused PHPCS ruleset for the ArtsPay WooCommerce gateway.</description>
 
     <!-- What to scan -->
