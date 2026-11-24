@@ -8,11 +8,13 @@
 * Update - Australian states use WooCommerce's own full names again (for example "Victoria" instead of "VIC"). Saved addresses are unaffected.
 * Update - Stores without HTTPS get Fat Zebra's default look for the hosted form, instead of a stylesheet from ArtsPay's CDN.
 * Security - The Apple Pay session endpoint only accepts Apple's servers, limits requests that arrive without a valid nonce (filter: `artspay_apple_pay_session_limit`), and no longer returns the gateway's error details.
-* Fix - Entering a card in the hosted form on the block checkout crashed the payment method. Payments could still go through, but after a decline or failed verification the form disappeared and the error showed twice. Customers can now try again or use another card.
 * Fix - If two copies of the plugin are active, only one runs, and the dashboard says so.
 * Fix - Saving a settings sub-page first on a new store no longer blanks the other settings.
 * Fix - Unexpected payment errors no longer write raw error data to the order notes.
 * Dev - Direct access checks on every file, and `bin/build.sh --wporg` builds the WordPress.org package.
+
+2026-11-24 - version 3.3.1
+* Fix - Entering a card in the hosted form on the block checkout crashed the payment method. Payments could still go through, but after a decline or failed verification the form disappeared, and a verification error showed twice. Customers can now try again or use another card.
 
 2026-11-24 - version 3.3.0
 * Add - Block Cart and Checkout support. ArtsPay now appears in the Checkout block with the secure hosted card form (including 3D Secure) or the on-site card form, and captcha. Stores no longer need to switch to the classic checkout.
