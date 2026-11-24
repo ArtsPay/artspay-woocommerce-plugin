@@ -67,3 +67,26 @@ test('saving a sub-page keeps settings from other pages', async ({ page }) => {
   await page.goto(`${SETTINGS}&artspay_page=three_ds`);
   await expect(page.locator('#woocommerce_fatzebra_oauth_access_key')).not.toHaveValue('');
 });
+
+test('3D Secure page says whether Fat Zebra accepts the OAuth details', async ({ page }) => {
+  const secret = page.locator('#woocommerce_fatzebra_oauth_access_secret');
+  const save = async (value) => {
+    await secret.fill(value);
+    await page.click('button[name="save"]');
+    await page.waitForLoadState('networkidle');
+  };
+
+  await page.goto(`${SETTINGS}&artspay_page=three_ds`);
+  const original = await secret.inputValue();
+  await expect(page.locator('.artspay-3ds-connection')).toContainText('Fat Zebra accepts these OAuth details');
+  try {
+    await save('wrong-secret');
+    await expect(page.locator('.artspay-3ds-connection')).toContainText('Fat Zebra refused the OAuth access key or secret');
+    await page.goto(SETTINGS);
+    await expect(page.locator('#artspay-fraud-security .artspay-express-settings__label').nth(1)).toContainText('Needs setup');
+  } finally {
+    await page.goto(`${SETTINGS}&artspay_page=three_ds`);
+    await save(original);
+  }
+  await expect(page.locator('.artspay-3ds-connection')).toContainText('Fat Zebra accepts these OAuth details');
+});

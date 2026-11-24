@@ -193,7 +193,7 @@ trait HostedCard {
 	public function get_three_ds_access_token(): string {
 		$access_key    = trim( (string) $this->get_option( 'oauth_access_key' ) );
 		$access_secret = trim( (string) $this->get_option( 'oauth_access_secret' ) );
-		$cache_key     = 'artspay_fz_oauth_' . md5( ( $this->is_sandbox_mode() ? 'sandbox' : 'live' ) . $access_key );
+		$cache_key     = 'artspay_fz_oauth_' . $this->get_three_ds_credentials_hash();
 
 		$cached = get_transient( $cache_key );
 		if ( is_string( $cached ) && '' !== $cached ) {
@@ -215,20 +215,78 @@ trait HostedCard {
 		);
 
 		if ( is_wp_error( $response ) ) {
-			Debug_Logger::log( '3DS access token request failed: ' . $response->get_error_message(), 'error' );
+			$this->record_three_ds_error( 'connection', $response->get_error_message() );
 			return '';
 		}
 
 		$body  = json_decode( (string) wp_remote_retrieve_body( $response ), true );
 		$token = is_array( $body ) && isset( $body['data']['token'] ) ? (string) $body['data']['token'] : '';
 		if ( '' === $token ) {
-			Debug_Logger::log( sprintf( '3DS access token request returned HTTP %d without a token.', (int) wp_remote_retrieve_response_code( $response ) ), 'error' );
+			$code = (int) wp_remote_retrieve_response_code( $response );
+			$this->record_three_ds_error( in_array( $code, array( 400, 401, 403, 422 ), true ) ? 'credentials' : 'connection', 'HTTP ' . $code );
 			return '';
 		}
+
+		delete_transient( 'artspay_3ds_error_' . $this->get_three_ds_credentials_hash() );
 
 		set_transient( $cache_key, $token, 10 * MINUTE_IN_SECONDS );
 
 		return $token;
+	}
+
+	/**
+	 * Identifies the saved OAuth details and mode, so a token or an error is never carried over to
+	 * different ones.
+	 */
+	private function get_three_ds_credentials_hash(): string {
+		return wp_hash( implode( '|', array( $this->is_sandbox_mode() ? 'sandbox' : 'live', trim( (string) $this->get_option( 'oauth_access_key' ) ), trim( (string) $this->get_option( 'oauth_access_secret' ) ) ) ) );
+	}
+
+	/**
+	 * Remember why Fat Zebra didn't give an access token. Without one every card payment that needs
+	 * 3D Secure fails, so it's logged even when debug mode is off.
+	 *
+	 * @param string $type   credentials|connection.
+	 * @param string $detail HTTP status or transport error.
+	 */
+	private function record_three_ds_error( string $type, string $detail ): void {
+		set_transient(
+			'artspay_3ds_error_' . $this->get_three_ds_credentials_hash(),
+			array(
+				'type'   => $type,
+				'detail' => $detail,
+			),
+			DAY_IN_SECONDS
+		);
+		Debug_Logger::error( sprintf( '3D Secure could not start (%1$s mode): %2$s', $this->is_sandbox_mode() ? 'test' : 'live', $this->get_three_ds_error_message() ) );
+	}
+
+	/**
+	 * Why 3D Secure last failed to start with the saved details, or '' if it hasn't. For store
+	 * admins only.
+	 */
+	public function get_three_ds_error_message(): string {
+		$error = get_transient( 'artspay_3ds_error_' . $this->get_three_ds_credentials_hash() );
+		if ( ! is_array( $error ) ) {
+			return '';
+		}
+
+		$mode = $this->is_sandbox_mode() ? __( 'test', 'artspay' ) : __( 'live', 'artspay' );
+		if ( 'credentials' === $error['type'] ) {
+			return sprintf(
+				/* translators: 1: test or live, 2: error detail, e.g. HTTP 422 */
+				__( 'Fat Zebra refused the OAuth access key or secret for %1$s mode (%2$s). Check they are the %1$s ones.', 'artspay' ),
+				$mode,
+				$error['detail']
+			);
+		}
+
+		return sprintf(
+			/* translators: 1: test or live, 2: error detail */
+			__( 'Your store couldn\'t get a 3D Secure access token from Fat Zebra in %1$s mode (%2$s).', 'artspay' ),
+			$mode,
+			$error['detail']
+		);
 	}
 
 	/**
@@ -373,7 +431,18 @@ trait HostedCard {
 
 		$access_token = $this->get_three_ds_access_token();
 		if ( '' === $access_token ) {
-			wp_send_json_error( null, 502 );
+			// Customers get the general message. Someone who manages the store gets the reason.
+			$data = null;
+			if ( current_user_can( 'manage_woocommerce' ) ) {
+				$data = array(
+					'message' => sprintf(
+						/* translators: %s: what went wrong */
+						__( '3D Secure could not start. %s Only store managers see this message.', 'artspay' ),
+						$this->get_three_ds_error_message()
+					),
+				);
+			}
+			wp_send_json_error( $data, 502 );
 		}
 
 		wp_send_json_success(

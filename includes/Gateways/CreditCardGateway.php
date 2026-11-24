@@ -1219,7 +1219,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 		return array(
 			'forter'   => $status( $this->fraud_detection_enabled(), true ),
-			'three_ds' => $status( 'yes' === $this->get_option( 'three_ds_enabled' ), $this->is_three_ds_enabled() ),
+			'three_ds' => $status( 'yes' === $this->get_option( 'three_ds_enabled' ), $this->is_three_ds_enabled() && '' === $this->get_three_ds_error_message() ),
 			'captcha'  => $status(
 				$this->is_captcha_enabled(),
 				'' !== trim( (string) $this->get_option( 'captcha_site_key' ) ) && '' !== trim( (string) $this->get_option( 'captcha_secret_key' ) )
@@ -1284,6 +1284,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 		if ( 'three_ds' === $page ) {
 			$this->render_three_ds_notices();
+			$this->render_three_ds_connection();
 		}
 
 		echo '<div class="artspay-gateway-settings__section">';
@@ -1294,6 +1295,28 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		echo $this->get_settings_html_for_field_keys( $subpage['fields'] );
 		echo '</table>';
 		echo '</div></div></div>';
+	}
+
+	/**
+	 * Check the OAuth details with Fat Zebra, so a wrong key shows up here and not as a failed
+	 * payment. A working token is reused for 10 minutes, so this rarely makes a request.
+	 */
+	private function render_three_ds_connection(): void {
+		if ( ! $this->is_three_ds_enabled() ) {
+			return;
+		}
+
+		if ( '' !== $this->get_three_ds_access_token() ) {
+			$class   = 'notice-success';
+			$message = $this->is_sandbox_mode()
+				? __( 'Fat Zebra accepts these OAuth details in test mode.', 'artspay' )
+				: __( 'Fat Zebra accepts these OAuth details in live mode.', 'artspay' );
+		} else {
+			$class   = 'notice-error';
+			$message = $this->get_three_ds_error_message() . ' ' . __( 'Card payments that need 3D Secure will fail until this is fixed.', 'artspay' );
+		}
+
+		echo '<div class="notice ' . esc_attr( $class ) . ' inline artspay-3ds-connection"><p>' . esc_html( $message ) . '</p></div>';
 	}
 
 	/**

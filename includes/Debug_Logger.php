@@ -56,6 +56,17 @@ final class Debug_Logger {
 	}
 
 	/**
+	 * Log a problem the store owner needs to know about, whether debug mode is on or not.
+	 *
+	 * @param string $message Log message. Must not contain card or credential data.
+	 */
+	public static function error( string $message ): void {
+		if ( function_exists( 'wc_get_logger' ) ) {
+			wc_get_logger()->error( $message, array( 'source' => self::SOURCE ) );
+		}
+	}
+
+	/**
 	 * Strip sensitive fields from API payload before logging.
 	 *
 	 * @param array<string, mixed> $payload Request payload.

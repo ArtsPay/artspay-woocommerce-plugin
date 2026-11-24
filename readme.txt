@@ -111,7 +111,7 @@ In test mode the plugin uses Fat Zebra's sandbox (gateway.sandbox.fatzebra.com.a
 
 = Forter (fraud screening, through Fat Zebra) =
 
-Used only if you turn on Forter. Order, customer, shipping and item details are sent to Fat Zebra with each payment for screening by Forter. If device fingerprinting is on, the customer's browser loads a script from gateway.pmnts.io that creates a device ID.
+Fat Zebra's hosted card form can load Forter's script from forter.com. The rest is used only if you turn on Forter: order, customer, shipping and item details are sent to Fat Zebra with each payment for screening by Forter. If device fingerprinting is on, the customer's browser loads a script from gateway.pmnts.io that creates a device ID.
 
 [Terms](https://www.forter.com/service-terms-of-use/), [privacy policy](https://www.forter.com/service-privacy-policy/).
 
@@ -142,6 +142,7 @@ Used only if you choose it as your captcha. The customer's browser loads it from
 == Changelog ==
 
 = 3.4.0 =
+* Add - 3D Secure setup problems now show in the settings, in the logs, and to store managers at checkout.
 * Update - The plugin is now called ArtsPay for WooCommerce. The gateway, settings, orders and saved cards are unchanged.
 * Update - New stores use the secure hosted card form. Existing stores keep the card form they have.
 * Update - The plugin no longer comes with built-in test credentials. ArtsPay shows as needing setup, and stays off the checkout, until your account details are saved.
@@ -161,7 +162,6 @@ Used only if you choose it as your captcha. The customer's browser loads it from
 * Add - Block Cart and Checkout support, including the hosted card form, 3D Secure, captcha, Google Pay and Apple Pay.
 * Fix - Payment errors (such as a decline) now show their reason on the block checkout.
 * Update - Google Pay and Apple Pay payments skip the captcha. Attempt limits still apply.
-* Remove - An uninstall script that deleted options belonging to another plugin.
 
 Earlier versions are in changelog.txt.
 

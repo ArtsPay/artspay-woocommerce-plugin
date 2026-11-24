@@ -1,6 +1,7 @@
 *** Changelog ***
 
 2026-11-24 - version 3.4.0
+* Add - 3D Secure setup problems are now visible. The 3D Secure page checks the OAuth details with Fat Zebra, the settings show Needs setup, store managers see the reason at checkout, and failures are logged even with debug mode off. Customers still see a general message.
 * Update - The plugin is now called ArtsPay for WooCommerce. The gateway, settings, orders and saved cards are unchanged.
 * Update - New stores use the secure hosted card form. Existing stores keep the card form they have.
 * Update - The plugin no longer comes with built-in test credentials. ArtsPay shows as needing setup, and stays off the checkout, until your account details are saved.
