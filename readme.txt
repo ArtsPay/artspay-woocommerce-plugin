@@ -5,7 +5,7 @@ Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.0
 Requires Plugins: woocommerce
-Stable tag: 3.2.0
+Stable tag: 3.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,7 +26,7 @@ WooCommerce ArtsPay Gateway connects your WooCommerce store to **ArtsPay** / **F
 * Deferred payments — tokenize and hold an order for manual capture later.
 * WooCommerce Subscriptions support.
 
-**Checkout:** ArtsPay currently works with the classic (shortcode) checkout. If your Checkout page uses the Checkout block, edit the page, select the block and choose "Switch to classic checkout". Block checkout support is planned.
+**Checkout:** ArtsPay works with both the Checkout block (the default on new stores) and the classic (shortcode) checkout, including Google Pay and Apple Pay on the block Cart and Checkout.
 
 **PHP:** the plugin runs on PHP 8.0 or later, but we recommend PHP 8.3 or later, kept on the latest patch release. Older PHP versions no longer receive security fixes.
 
@@ -57,6 +57,28 @@ Use the billing emails `accept@email.com`, `challenge@email.com`, or `deny@email
 Yes. Turn them on under **Express checkouts** in the ArtsPay settings. The buttons appear on the cart and checkout. Google Pay needs a Fat Zebra Google Pay merchant ID, and Apple Pay needs your domain verified and registered from the same page. Both need HTTPS on a live store.
 
 == Changelog ==
+
+= 3.3.0 =
+* Add - Block Cart and Checkout support. ArtsPay now appears in the Checkout block with the secure hosted card form (including 3D Secure) or the on-site card form, and captcha. Stores no longer need to switch to the classic checkout.
+* Add - Google Pay and Apple Pay on the block Cart and Checkout, as express payment buttons. The order uses the name, address, email and phone the customer confirms in the wallet. A declined wallet payment shows its reason (under the buttons on the Cart block) and puts the checkout back so the customer can pay another way. They replace the earlier buttons on block pages, which filled in classic checkout fields the block checkout never sent.
+* Fix - Payment errors (such as a decline) now show their reason on the block checkout instead of a general error.
+* Fix - Google Pay no longer sends `merchantOrigin`, which Google reserves for platforms paying on behalf of other merchants. Affects both checkouts.
+* Update - Google Pay and Apple Pay payments skip the captcha. Each wallet token is signed by Google or Apple for a real account, so it can't be used to test cards, and the attempt limits still apply. Card payments still need the captcha.
+* Update - Cloudflare Turnstile stays hidden unless Cloudflare needs the customer to do something.
+* Update - The secure hosted card form now fills the width of the payment box and lines up on the left, with expiry date and security code side by side. Fat Zebra loads its stylesheet from the plugin on HTTPS stores (ArtsPay's standard stylesheet otherwise); the `artspay_hosted_card_css_url` filter still overrides it.
+* Update - Block checkout: the express payment section has a plain, centred "Express Checkout" title without the surrounding box, the divider below it reads "Or", and the Google Pay and Apple Pay buttons are the same height.
+* Update - Apple Pay setup:
+  * Live stores register their domain in the ArtsPay Dashboard (Settings → Wallets → Apple Pay → Add domain). Registering from the plugin stays available for merchants without Dashboard access.
+  * Sandbox stores register from the plugin, since the Dashboard registers with the live Fat Zebra merchant.
+  * Both verification files (sandbox and production) are linked, with the one for the store's current mode marked.
+  * The verification check says which file the site serves, and warns when it doesn't match the store's mode.
+  * "Run verification check" is now a regular button.
+* Update - Captcha and wallet tokens are read from the payment data WooCommerce passes to the gateway, so they work with both checkouts.
+* Remove - The "Card details are entered securely with Fat Zebra" line under the hosted card form.
+* Remove - The rule from 3.1.3 that rejected card payments through the Store API. The block checkout uses that route; attempt limits and captcha still apply to it.
+* Fix - Deleting the plugin no longer runs a cleanup script that removed options belonging to another plugin. Deleting ArtsPay keeps its settings and order data.
+* Dev - Added the `Update URI` header, so WordPress only treats this plugin as updated from its own source.
+* Dev - Hosted form and 3D Secure code shared by both checkouts (`artspay-fatzebra.js`). Block checkout browser tests in `tests/e2e`, including Google Pay and Apple Pay button checks.
 
 = 3.2.0 =
 * Add - Secure hosted card form. Set Card form to "Secure hosted form" and customers enter their card in Fat Zebra's form inside your checkout. Card numbers go straight to Fat Zebra and never reach your server, which keeps the store out of most PCI scope (SAQ A). Needs the Gateway Shared Secret.
@@ -106,6 +128,9 @@ Yes. Turn them on under **Express checkouts** in the ArtsPay settings. The butto
 * Update - Google Pay / Apple Pay express checkout UI and storefront hooks are disabled in this release; wallet flows are planned to return in 3.1.1.
 
 == Upgrade Notice ==
+
+= 3.3.0 =
+Adds support for the block Cart and Checkout, including Google Pay and Apple Pay. If you switched your Checkout page to the classic checkout for ArtsPay, you can switch it back.
 
 = 3.2.0 =
 Adds an optional secure hosted card form and 3D Secure, moves Forter, 3D Secure and Captcha onto their own settings pages, adds support for WooCommerce's order storage (HPOS), and fixes declined deferred captures being marked as paid. Recommended for all stores.

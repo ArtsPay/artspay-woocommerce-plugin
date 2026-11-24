@@ -1,6 +1,6 @@
 # Browser tests
 
-Playwright tests that run a real classic checkout and the ArtsPay settings screens against the Fat Zebra sandbox. They cover the secure hosted card form, 3D Secure (frictionless, challenge, failed, and a tampered browser that skips it), and settings sub-page saves.
+Playwright tests that run real classic and block checkouts and the ArtsPay settings screens against the Fat Zebra sandbox. They cover the secure hosted card form, 3D Secure (frictionless, challenge, failed, and a tampered browser that skips it), Google Pay on the block checkout (with a fake `pay.js`, so Fat Zebra declines it), and settings sub-page saves.
 
 These place real sandbox orders, so they are not part of CI. Run them before a release, and after changes to checkout, 3DS or settings.
 
@@ -17,7 +17,7 @@ export FZ_USERNAME=... FZ_TOKEN=... FZ_SHARED_SECRET=... FZ_OAUTH_KEY=... FZ_OAU
 npm run setup-store
 ```
 
-`setup-store` builds a throwaway store in `/tmp/artspay-e2e-store` (WordPress on SQLite, WooCommerce, a $25 product, a classic checkout page, and ArtsPay with the hosted form and 3DS on) and prints the commands to start it and run the tests. It copies the plugin from this repo, so re-run `rsync` (or delete the store and run setup again) after code changes.
+`setup-store` builds a throwaway store in `/tmp/artspay-e2e-store` (WordPress on SQLite, WooCommerce, a $25 product, a classic checkout page, a Checkout block page, and ArtsPay with the hosted form and 3DS on) and prints the commands to start it and run the tests. It copies the plugin from this repo, so re-run `rsync` (or delete the store and run setup again) after code changes.
 
 ## Gotchas
 
@@ -26,6 +26,12 @@ npm run setup-store
 - **References.** Fat Zebra references are unique per merchant, and a shared sandbox merchant has used low order numbers already. Setup starts the store's order IDs high, and the plugin adds a random suffix to every reference.
 - **wp-cli memory.** If `wp core download` stops with exit code 255, PHP ran out of memory extracting WordPress. Point `WP_CLI` at a wrapper that runs `php -d memory_limit=512M wp-cli.phar`.
 - **HPOS.** The store starts on WooCommerce's default storage. To test both, run once, then `wp wc hpos sync && wp wc hpos enable` and run again.
+
+## Optional checks
+
+- **Google Pay on the block checkout:** switch Google Pay on (any merchant ID will do), then run with `ARTSPAY_E2E_GOOGLE_PAY=1`.
+- **Apple Pay on the block Cart and Checkout:** switch Apple Pay on, then run with `ARTSPAY_E2E_APPLE_PAY=1` and `ARTSPAY_E2E_BLOCKS_CART_PATH` set to a page with the Cart block. The test stubs `ApplePaySession` and checks a click starts a session.
+- **Other settings:** the suite assumes the hosted form with 3DS on. The on-site form, captcha (Cloudflare's [test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/) work in the sandbox) and 3DS off were checked by hand for 3.3.0.
 
 ## Not covered here
 

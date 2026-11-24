@@ -66,11 +66,12 @@ $WP option update woocommerce_currency AUD --quiet
 $WP option update woocommerce_default_country 'AU:NSW' --quiet
 $WP option update woocommerce_coming_soon no --quiet
 
-# Classic (shortcode) checkout: the block checkout is covered separately.
+# The classic (shortcode) checkout is the store's checkout page. A second page holds the Checkout block.
 CHECKOUT=$($WP post create --post_type=page --post_status=publish --post_title=Checkout --post_content='[woocommerce_checkout]' --porcelain)
 CART=$($WP post create --post_type=page --post_status=publish --post_title=Cart --post_content='[woocommerce_cart]' --porcelain)
 $WP option update woocommerce_checkout_page_id "$CHECKOUT" --quiet
 $WP option update woocommerce_cart_page_id "$CART" --quiet
+BLOCKS=$($WP eval '$m = new ReflectionMethod( "WC_Install", "get_checkout_block_content" ); $m->setAccessible( true ); echo wp_insert_post( array( "post_type" => "page", "post_status" => "publish", "post_title" => "Block Checkout", "post_content" => $m->invoke( null ) ) );')
 PRODUCT=$($WP wc product create --name="Test Print" --type=simple --regular_price=25.00 --virtual=true --user=admin --porcelain)
 
 # Fat Zebra references must be unique per merchant, and a shared sandbox merchant has used low
@@ -90,5 +91,5 @@ cat <<EOF
 
 Store ready in $STORE_DIR.
 Start it:   php -S 127.0.0.1:${HOST##*:} -t $STORE_DIR/site
-Then run:   ARTSPAY_E2E_BASE_URL=http://$HOST ARTSPAY_E2E_PRODUCT_ID=$PRODUCT ARTSPAY_E2E_CHECKOUT_PATH=/?page_id=$CHECKOUT npx playwright test
+Then run:   ARTSPAY_E2E_BASE_URL=http://$HOST ARTSPAY_E2E_PRODUCT_ID=$PRODUCT ARTSPAY_E2E_CHECKOUT_PATH=/?page_id=$CHECKOUT ARTSPAY_E2E_BLOCKS_CHECKOUT_PATH=/?page_id=$BLOCKS npx playwright test
 EOF

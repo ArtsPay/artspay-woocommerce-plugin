@@ -36,6 +36,7 @@ final class Plugin {
 		// Fires when an order is saved in wp-admin, with either order storage (save_post misses HPOS orders).
 		add_action( 'woocommerce_process_shop_order_meta', array( $this, 'set_recurring_payment_method' ) );
 		add_action( 'wc_ajax_artspay_hosted_card_form', array( $this, 'ajax_hosted_card_form' ) );
+		add_action( 'woocommerce_blocks_payment_method_type_registration', array( $this, 'register_block_payment_method' ) );
 		add_action( 'wc_ajax_artspay_3ds_prepare', array( $this, 'ajax_three_ds_prepare' ) );
 
 		// Register admin-post handlers early (admin-post requests may not run admin_init).
@@ -162,6 +163,15 @@ final class Plugin {
 		$gateways = WC()->payment_gateways()->payment_gateways();
 
 		return isset( $gateways['fatzebra'] ) && $gateways['fatzebra'] instanceof CreditCardGateway ? $gateways['fatzebra'] : null;
+	}
+
+	/**
+	 * Register ArtsPay with the block Cart and Checkout.
+	 *
+	 * @param \Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $registry Registry.
+	 */
+	public function register_block_payment_method( $registry ): void {
+		$registry->register( new Blocks\CardMethod() );
 	}
 
 	/**

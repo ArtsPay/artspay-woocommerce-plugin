@@ -79,6 +79,7 @@ async function expectCheckoutError(page, text) {
 }
 
 module.exports = {
+  allowInsecureTestOrigin,
   openCheckout,
   payWithHostedCard,
   completeChallenge,

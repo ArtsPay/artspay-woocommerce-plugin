@@ -10,9 +10,7 @@ namespace ArtsPay\Gateways;
 use ArtsPay\API\Client;
 use ArtsPay\Admin\ApplePay as ApplePayAdmin;
 use ArtsPay\Debug_Logger;
-use ArtsPay\Express\Blocks;
 use ArtsPay\Express\ApplePay;
-use ArtsPay\Express\BlocksApplePay;
 use ArtsPay\Express\GooglePay;
 use ArtsPay\Traits;
 use DateTime;
@@ -124,15 +122,26 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		}
 
 		add_action( 'admin_notices', array( $this, 'maybe_fraud_settings_notice' ) );
-		add_action( 'woocommerce_rest_checkout_process_payment_with_context', array( $this, 'reject_store_api_payment' ), 1 );
 
 		$this->express_google_pay = new GooglePay( $this );
 		$this->express_google_pay->register_hooks();
-		( new Blocks( $this->express_google_pay, $this ) )->register_hooks();
 
 		$this->express_apple_pay = new ApplePay( $this );
 		$this->express_apple_pay->register_hooks();
-		( new BlocksApplePay( $this->express_apple_pay ) )->register_hooks();
+	}
+
+	/**
+	 * Google Pay express checkout integration.
+	 */
+	public function get_express_google_pay(): ?GooglePay {
+		return $this->express_google_pay;
+	}
+
+	/**
+	 * Apple Pay express checkout integration.
+	 */
+	public function get_express_apple_pay(): ?ApplePay {
+		return $this->express_apple_pay;
 	}
 
 	/**
@@ -203,16 +212,24 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	public function add_device_id_hidden_field(): void {
 		echo "<input type='hidden' name='pmnts_id' id='pmnts_id' />";
 
-		$credentials = $this->get_gateway_credentials();
+		wp_register_script( 'fz-fraud-deviceid', $this->get_device_id_script_url(), array(), ARTSPAY_PLUGIN_VERSION, false );
+		wp_enqueue_script( 'fz-fraud-deviceid' );
+	}
 
-		$device_id_url = sprintf(
+	/**
+	 * Fat Zebra device fingerprint script for Forter, or '' when device fingerprinting is off.
+	 * The script fills in the #pmnts_id field.
+	 */
+	public function get_device_id_script_url(): string {
+		if ( ! $this->fraud_detection_enabled() || 'yes' !== $this->get_option( 'fraud_device_id' ) ) {
+			return '';
+		}
+
+		return sprintf(
 			'%s/fraud/fingerprint/%s.js',
 			$this->is_sandbox_mode() ? 'https://gateway-sandbox.pmnts.io' : 'https://gateway.pmnts.io',
-			rawurlencode( $credentials['username'] ?? '' )
+			rawurlencode( (string) ( $this->get_gateway_credentials()['username'] ?? '' ) )
 		);
-
-		wp_register_script( 'fz-fraud-deviceid', $device_id_url, array(), ARTSPAY_PLUGIN_VERSION, false );
-		wp_enqueue_script( 'fz-fraud-deviceid' );
 	}
 
 	/**
@@ -317,8 +334,15 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * Stripe-style test mode copy when sandbox is enabled (Fat Zebra test Visa + docs link).
 	 */
 	private function render_sandbox_checkout_notice(): void {
+		echo $this->get_sandbox_checkout_notice_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped with wp_kses() in the getter.
+	}
+
+	/**
+	 * Test mode notice for checkout, or '' outside sandbox mode. Also used by the block checkout.
+	 */
+	public function get_sandbox_checkout_notice_html(): string {
 		if ( ! $this->is_sandbox_mode() ) {
-			return;
+			return '';
 		}
 
 		$docs_url     = apply_filters( 'artspay_sandbox_test_docs_url', 'https://www.artspay.com/docs/developer/testing/test-card-numbers' );
@@ -340,8 +364,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			);
 		}
 
-		echo '<div class="artspay-test-mode-notice" role="status">';
-		echo wp_kses(
+		return '<div class="artspay-test-mode-notice" role="status">' . wp_kses(
 			$message,
 			array(
 				'strong' => array(),
@@ -352,8 +375,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 					'rel'    => true,
 				),
 			)
-		);
-		echo '</div>';
+		) . '</div>';
 	}
 
 	/**
@@ -1330,12 +1352,21 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		$canonical_host = strtolower( trim( $canonical_host ) );
 		$domain_display  = '' !== $canonical_host ? $canonical_host : __( 'your domain', 'artspay' );
 
-		$prod_file    = 'https://paynow.pmnts.io/apple_pay/domain_verification/production.txt';
-		$sandbox_file = 'https://paynow.pmnts-sandbox.io/apple_pay/domain_verification/sandbox.txt';
+		$sandbox   = $this->is_sandbox_mode();
+		$file_urls = ApplePayAdmin::get_association_file_urls();
+		/**
+		 * Filter the ArtsPay Dashboard URL in the Apple Pay steps (live stores only).
+		 *
+		 * @param string $url Dashboard URL.
+		 */
+		$dashboard_url = (string) apply_filters( 'artspay_dashboard_url', 'https://dashboard.artspay.com' );
 
-		$https_ok      = ApplePayAdmin::is_home_https();
-		$verified_url  = ApplePayAdmin::is_association_file_ok_for_status( $this );
-		$registered_ok = ApplePayAdmin::is_domain_registered_ok_for_current_user();
+		$https_ok    = ApplePayAdmin::is_home_https();
+		$file_status = ApplePayAdmin::get_association_status( $this );
+		$mode_label  = array(
+			'sandbox'    => __( 'sandbox', 'artspay' ),
+			'production' => __( 'production', 'artspay' ),
+		);
 
 		echo '<hr />';
 		echo '<h3>' . esc_html__( 'Installing Apple Pay', 'artspay' ) . '</h3>';
@@ -1345,19 +1376,17 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		$this->render_apple_pay_status_icon( $https_ok );
 		echo '<span>' . esc_html__( 'HTTPS certificate available', 'artspay' ) . '</span></li>';
 		echo '<li style="display:flex;align-items:center;gap:10px;margin:8px 0;">';
-		$this->render_apple_pay_status_icon( $verified_url );
-		echo '<span>' . esc_html__( 'Apple Pay verification URL verified', 'artspay' ) . '</span></li>';
-		echo '<li style="display:flex;align-items:center;gap:10px;margin:8px 0;">';
-		$this->render_apple_pay_status_icon( $registered_ok );
-		echo '<span>';
-		echo esc_html(
-			sprintf(
-				/* translators: %s: domain hostname, e.g. example.com */
-				__( 'Register %s with ArtsPay', 'artspay' ),
-				$domain_display
-			)
-		);
-		echo '</span></li>';
+		$this->render_apple_pay_status_icon( $file_status['ok'] );
+		if ( '' === $file_status['matches'] ) {
+			$file_text = __( 'Apple Pay verification file found on this site', 'artspay' );
+		} elseif ( $file_status['ok'] ) {
+			/* translators: %s: sandbox or production */
+			$file_text = sprintf( __( 'Apple Pay verification file found on this site (%s)', 'artspay' ), $mode_label[ $file_status['matches'] ] );
+		} else {
+			/* translators: 1: file found (sandbox or production), 2: store mode (sandbox or production) */
+			$file_text = sprintf( __( 'This site serves the %1$s file, but the store is in %2$s mode. Apple Pay works only in the mode the file matches.', 'artspay' ), $mode_label[ $file_status['matches'] ], $mode_label[ $sandbox ? 'sandbox' : 'production' ] );
+		}
+		echo '<span>' . esc_html( $file_text ) . '</span></li>';
 		echo '</ul>';
 
 		$is_redirected = ( '' !== $result_key ) && is_array( $result );
@@ -1389,26 +1418,82 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		echo '<h4 style="margin-top:1.25em;">' . esc_html__( 'Steps', 'artspay' ) . '</h4>';
 		echo '<ol class="artspay-applepay-steps" style="max-width:720px;line-height:1.5;">';
 
-		echo '<li>' . esc_html__( 'Download the correct verification file for your environment (sandbox vs production) and upload it so it is served at the Apple verification URL', 'artspay' );
-		echo ' <code>/.well-known/apple-developer-merchantid-domain-association</code>. ';
-		echo esc_html__( 'Files:', 'artspay' ) . ' ';
-		echo '<a href="' . esc_url( $sandbox_file ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Sandbox', 'artspay' ) . '</a>';
-		echo ' · ';
-		echo '<a href="' . esc_url( $prod_file ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Production', 'artspay' ) . '</a>';
+		echo '<li>' . esc_html__( 'Download the verification file and upload it to your site so it is served at', 'artspay' );
+		echo ' <code>/.well-known/apple-developer-merchantid-domain-association</code>.';
+		echo '<br />' . esc_html__( 'Use the file for the mode you want Apple Pay to work in. A site can serve only one, so swap it when you go live.', 'artspay' );
+		echo '<ul style="margin:6px 0 0 1.25em;list-style:disc;">';
+		foreach ( array( 'production', 'sandbox' ) as $file_mode ) {
+			$is_current = ( 'sandbox' === $file_mode ) === $sandbox;
+			echo '<li><a href="' . esc_url( $file_urls[ $file_mode ] ) . '" target="_blank" rel="noopener noreferrer">';
+			echo esc_html( 'production' === $file_mode ? __( 'Production file', 'artspay' ) : __( 'Sandbox file', 'artspay' ) ) . '</a>';
+			echo ' <span class="description">' . esc_html( 'production' === $file_mode ? __( 'for live payments', 'artspay' ) : __( 'for testing', 'artspay' ) );
+			if ( $is_current ) {
+				echo ' ' . esc_html__( '(this store\'s current mode)', 'artspay' );
+			}
+			echo '</span></li>';
+		}
+		echo '</ul>';
 		echo '</li>';
 
-		echo '<li>' . esc_html__( 'Once the file has been uploaded to the above location, run a verification check.', 'artspay' ) . ' ';
-		echo '<button type="submit" form="artspay-applepay-check-form" class="button button-link">' . esc_html__( 'Run verification check', 'artspay' ) . '</button>';
+		echo '<li>' . esc_html__( 'Check the file is in place.', 'artspay' );
+		echo '<br /><button type="submit" form="artspay-applepay-check-form" class="button" style="margin-top:6px;">' . esc_html__( 'Run verification check', 'artspay' ) . '</button>';
 		echo '</li>';
 
-		echo '<li>' . esc_html__( 'When the file is successfully verified on your system, register your domain with ArtsPay to finalise API domain registration.', 'artspay' ) . ' ';
-		echo '<button type="submit" form="artspay-applepay-register-form" class="button button-primary">' . esc_html__( 'Register domain with ArtsPay', 'artspay' ) . '</button>';
-		echo ' ' . esc_html__( 'You should see a green tick when this step succeeds.', 'artspay' );
+		// The ArtsPay Dashboard registers domains with the live Fat Zebra merchant, so a sandbox
+		// store registers with its own sandbox credentials instead.
+		if ( $sandbox ) {
+			echo '<li>' . esc_html__( 'Register your domain with Fat Zebra\'s sandbox, using this store\'s gateway credentials.', 'artspay' );
+			echo '<br /><button type="submit" form="artspay-applepay-register-form" class="button" style="margin-top:6px;">' . esc_html__( 'Register domain', 'artspay' ) . '</button>';
+			echo '<br /><span class="description">' . wp_kses(
+				sprintf(
+					/* translators: %s: ArtsPay Dashboard URL */
+					__( 'Before going live: upload the production file, then register the domain in the <a href="%s" target="_blank" rel="noopener noreferrer">ArtsPay Dashboard</a> under <strong>Settings → Wallets → Apple Pay → Add domain</strong>.', 'artspay' ),
+					esc_url( $dashboard_url )
+				),
+				array(
+					'a'      => array(
+						'href'   => true,
+						'target' => true,
+						'rel'    => true,
+					),
+					'strong' => array(),
+				)
+			) . '</span>';
+			echo '</li>';
+			echo '<li>' . esc_html__( 'Turn on “Enable Apple Pay” above.', 'artspay' ) . '</li>';
+			echo '</ol>';
+			return;
+		}
+
+		echo '<li>';
+		echo wp_kses(
+			sprintf(
+				/* translators: 1: ArtsPay Dashboard URL, 2: store domain */
+				__( 'Register your domain in the <a href="%1$s" target="_blank" rel="noopener noreferrer">ArtsPay Dashboard</a>: <strong>Settings → Wallets → Apple Pay → Add domain</strong>, and enter <code>%2$s</code>. If it shows Pending or Failed, press Retry until it shows Verified.', 'artspay' ),
+				esc_url( $dashboard_url ),
+				esc_html( $domain_display )
+			),
+			array(
+				'a'      => array(
+					'href'   => true,
+					'target' => true,
+					'rel'    => true,
+				),
+				'strong' => array(),
+				'code'   => array(),
+			)
+		);
+		echo ' ' . esc_html__( 'Use the ArtsPay account set up with the same Fat Zebra merchant as this store.', 'artspay' );
 		echo '</li>';
+
+		echo '<li>' . esc_html__( 'Turn on “Enable Apple Pay” above.', 'artspay' ) . '</li>';
 
 		echo '</ol>';
 
-		echo '<p class="description" style="max-width:720px;margin-top:1em;">' . esc_html__( 'You are all set. Click “Enable Apple Pay” above to enable it as a payment method on checkout.', 'artspay' ) . '</p>';
+		echo '<details style="max-width:720px;margin-top:1em;"><summary>' . esc_html__( 'No access to the ArtsPay Dashboard? Register from this site instead.', 'artspay' ) . '</summary>';
+		echo '<p>' . esc_html__( 'This registers the domain with Fat Zebra using this store\'s gateway credentials. It does the same as the Dashboard step, so use one or the other.', 'artspay' ) . '</p>';
+		echo '<p><button type="submit" form="artspay-applepay-register-form" class="button">' . esc_html__( 'Register domain from this site', 'artspay' ) . '</button></p>';
+		echo '</details>';
 	}
 
 	/**
@@ -1474,18 +1559,14 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	}
 
 	/**
-	 * Stop card payments arriving through the Store API checkout endpoint. No store page uses
-	 * it for this gateway, so a request here comes from a script and skips the checkout form.
-	 * Remove when block checkout support ships.
+	 * Result for a payment that didn't go through. The reason is already a WooCommerce notice.
+	 * The block checkout (Store API) only shows notices when the result says failure, and
+	 * clears them otherwise, so returning nothing would hide the reason.
 	 *
-	 * @param object $context Store API payment context.
-	 *
-	 * @throws Exception When the payment is for this gateway.
+	 * @return array{result: string}
 	 */
-	public function reject_store_api_payment( $context ): void {
-		if ( $this->id === $context->payment_method ) {
-			throw new Exception( esc_html__( 'This payment method is only available on the checkout page.', 'artspay' ) );
-		}
+	private function payment_failed(): array {
+		return array( 'result' => 'failure' );
 	}
 
 	/**
@@ -1493,7 +1574,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 *
 	 * @param int $order_id Order ID.
 	 *
-	 * @return array|void
+	 * @return array
 	 */
 	public function process_payment( $order_id ) {
 		global $woocommerce;
@@ -1502,20 +1583,26 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		if ( '' !== $attempt_scope ) {
 			$this->apply_attempt_limit( wc_get_order( $order_id ), $attempt_scope );
 			wc_add_notice( $this->get_attempt_limit_message(), 'error' );
-			return;
+			return $this->payment_failed();
 		}
 
-		if ( $this->is_captcha_enabled() ) {
-			$captcha_token = filter_input( INPUT_POST, 'captcha_token', FILTER_UNSAFE_RAW );
+		// Wallet payments skip the captcha. The express buttons on the block Cart and Checkout sit
+		// outside the card form, so they have no captcha to send. Card testing isn't possible with
+		// them either: Google and Apple sign each token for a real account, Fat Zebra rejects
+		// anything else, and the attempt limits above still apply.
+		$is_wallet_payment = '' !== $this->posted_field( 'googlepay-token' ) || '' !== $this->posted_field( 'applepay-token' );
+
+		if ( $this->is_captcha_enabled() && ! $is_wallet_payment ) {
+			$captcha_token = $this->posted_field( 'captcha_token' );
 
 			if ( empty( $captcha_token ) ) {
 				wc_add_notice( $this->get_captcha_error_message(), 'error' );
-				return;
+				return $this->payment_failed();
 			}
 
 			if ( ! $this->verify_captcha_token( $captcha_token ) ) {
 				wc_add_notice( $this->get_captcha_error_message(), 'error' );
-				return;
+				return $this->payment_failed();
 			}
 		}
 
@@ -1523,13 +1610,20 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 		$order = wc_get_order( $order_id );
 		$this->params['currency'] = $order->get_currency();
+
+		// The block checkout sends the Forter device ID with the payment, not as a checkout field.
+		$device_id = $this->posted_field( 'pmnts_id' );
+		if ( '' !== $device_id && '' === (string) $order->get_meta( 'device_id' ) ) {
+			$order->update_meta_data( 'device_id', $device_id );
+			$order->save();
+		}
 		$ip                        = $this->get_order_ip_address( $order );
 		$this->params['customer_ip'] = $ip; // Backwards compatible with existing payloads.
 		$this->params['ip_address']  = $ip;
 		$this->params['metadata']    = $this->build_fatzebra_metadata_for_order( $order );
 
 		// Wallet checkout: token is set by our express buttons.
-		$googlepay_token = filter_input( INPUT_POST, 'googlepay-token', FILTER_UNSAFE_RAW );
+		$googlepay_token = $this->posted_field( 'googlepay-token' );
 		if ( ! empty( $googlepay_token ) ) {
 			$defer_payment = 'no';
 
@@ -1546,7 +1640,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			$decoded = $this->base64_url_decode( (string) $googlepay_token );
 			if ( false === $decoded || '' === $decoded ) {
 				wc_add_notice( __( 'Google Pay did not return a valid payment token. Please try again.', 'artspay' ), 'error' );
-				return;
+				return $this->payment_failed();
 			}
 			// Google Pay tokens are often JSON strings; Fat Zebra expects the JSON object form.
 			$decoded_json = json_decode( (string) $decoded );
@@ -1562,7 +1656,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 
 			$result = $this->do_wallet_payment( $this->params, 'GOOGLE' );
 		} else {
-			$applepay_token = filter_input( INPUT_POST, 'applepay-token', FILTER_UNSAFE_RAW );
+			$applepay_token = $this->posted_field( 'applepay-token' );
 			if ( ! empty( $applepay_token ) ) {
 				$defer_payment = 'no';
 
@@ -1579,7 +1673,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				$decoded = $this->base64_url_decode( (string) $applepay_token );
 				if ( false === $decoded || '' === $decoded ) {
 					wc_add_notice( __( 'Apple Pay did not return a valid payment token. Please try again.', 'artspay' ), 'error' );
-					return;
+					return $this->payment_failed();
 				}
 
 				$decoded_json = json_decode( (string) $decoded );
@@ -1605,7 +1699,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				if ( '' === $this->params['card_token'] ) {
 					$this->release_payment_attempt( (int) $order_id );
 					wc_add_notice( __( 'Enter your card details in the secure card form, then press Pay now.', 'artspay' ), 'error' );
-					return;
+					return $this->payment_failed();
 				}
 			} else {
 				// Card fields: digits only, so spaces and stray characters never reach Fat Zebra.
@@ -1641,7 +1735,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				if ( null === $three_ds ) {
 					$this->release_payment_attempt( (int) $order_id );
 					wc_add_notice( __( 'Your card needs to be verified with your bank first. Press Place order to try again.', 'artspay' ), 'error' );
-					return;
+					return $this->payment_failed();
 				}
 				$this->params['extra'] = $three_ds;
 			}
@@ -1821,6 +1915,8 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'redirect' => $this->get_return_url( $order ),
 			);
 		}
+
+		return $this->payment_failed();
 	}
 
 	/**
@@ -2565,13 +2661,29 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	}
 
 	/**
-	 * Generate card logos HTML.
+	 * Card logos chosen in the settings, for the block checkout.
 	 *
-	 * Logo height defaults to 24px (clamped 16–64). Override with the `artspay_card_logo_height` filter.
-	 *
-	 * @return string
+	 * @return array<int, array{id: string, src: string, alt: string}>
 	 */
-	private function get_card_logos_html(): string {
+	public function get_card_logo_list(): array {
+		$list = array();
+		foreach ( $this->get_selected_card_logos() as $id => $file ) {
+			$list[] = array(
+				'id'  => $id,
+				'src' => ARTSPAY_PLUGIN_URL . 'assets/images/' . $file,
+				'alt' => $id,
+			);
+		}
+
+		return $list;
+	}
+
+	/**
+	 * Logo files for the card schemes chosen in the settings, keyed by scheme.
+	 *
+	 * @return array<string, string>
+	 */
+	private function get_selected_card_logos(): array {
 		$logos = array(
 			'visa'             => 'visa.png',
 			'mastercard'       => 'mc.png',
@@ -2580,24 +2692,41 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			'jcb'              => 'jcb.png',
 		);
 
+		$selected = $this->settings['show_card_logos'] ?? array();
+		if ( ! is_array( $selected ) ) {
+			return array();
+		}
+
+		$out = array();
+		foreach ( $selected as $value ) {
+			if ( isset( $logos[ $value ] ) ) {
+				$out[ $value ] = $logos[ $value ];
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Generate card logos HTML.
+	 *
+	 * Logo height defaults to 24px (clamped 16–64). Override with the `artspay_card_logo_height` filter.
+	 *
+	 * @return string
+	 */
+	private function get_card_logos_html(): string {
 		$height_px = (int) apply_filters( 'artspay_card_logo_height', 24 );
 		$height_px = max( 16, min( 64, $height_px ) );
 
 		$html = '';
 
-		$selected = $this->settings['show_card_logos'] ?? array();
-		if ( ! is_array( $selected ) ) {
-			$selected = array();
-		}
-		foreach ( $selected as $value ) {
-			if ( isset( $logos[ $value ] ) ) {
-				$html .= sprintf(
-					'<img class="artspay-card-logo" src="%s" alt="%s" height="%3$d" style="height:%3$dpx;width:auto;max-width:100%%;vertical-align:middle;margin-inline-end:6px;border-radius:3px;" loading="lazy" decoding="async" />',
-					esc_url( ARTSPAY_PLUGIN_URL . 'assets/images/' . $logos[ $value ] ),
-					esc_attr( $value ),
-					$height_px
-				);
-			}
+		foreach ( $this->get_selected_card_logos() as $value => $file ) {
+			$html .= sprintf(
+				'<img class="artspay-card-logo" src="%s" alt="%s" height="%3$d" style="height:%3$dpx;width:auto;max-width:100%%;vertical-align:middle;margin-inline-end:6px;border-radius:3px;" loading="lazy" decoding="async" />',
+				esc_url( ARTSPAY_PLUGIN_URL . 'assets/images/' . $file ),
+				esc_attr( $value ),
+				$height_px
+			);
 		}
 
 		return $html;

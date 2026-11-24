@@ -4,7 +4,7 @@ Guidance for coding agents and contributors working in this repository.
 
 ## Project overview
 
-**WooCommerce ArtsPay Gateway** connects a WooCommerce store to **ArtsPay** / **Fat Zebra** for card processing. The main gateway class handles inline card flows, subscriptions, refunds, optional **Forter** fraud screening, captcha, and (when enabled) **Google Pay** express checkout and Cart/Checkout **Blocks** mounts.
+**WooCommerce ArtsPay Gateway** connects a WooCommerce store to **ArtsPay** / **Fat Zebra** for card processing. The main gateway class handles inline card flows, subscriptions, refunds, optional **Forter** fraud screening, captcha, 3D Secure with the secure hosted card form, and **Google Pay** / **Apple Pay** express checkout. It works on the classic checkout and the block Cart and Checkout.
 
 **Requirements:** PHP 8.0+, WordPress and WooCommerce per [`artspay-woocommerce.php`](artspay-woocommerce.php) headers. No Node/npm or Composer toolchain for builds (static JS/CSS only).
 
@@ -39,7 +39,8 @@ flowchart LR
 - **`Plugin`** – Registers the gateway with WooCommerce, admin hooks, text domain, optional admin asset enqueue for gateway settings CSS (and Google Pay preview when wallets are enabled).
 - **`CreditCardGateway`** – Extends WooCommerce’s card gateway: settings UI, `process_payment`, subscriptions, fraud payload, captcha, wallet token handling when enabled.
 - **`ArtsPay\API\Client`** – HTTP calls to Fat Zebra (purchases, refunds, wallet purchases, etc.).
-- **`ArtsPay\Express\GooglePay`** / **`ArtsPay\Express\Blocks`** – Express checkout (when constructor wiring is active): classic + block mount points, asset enqueue.
+- **`ArtsPay\Express\GooglePay`** / **`ApplePay`** – Wallet buttons on the classic checkout, plus `get_blocks_config()` for the block checkout.
+- **`ArtsPay\Blocks\CardMethod`** – Block Cart/Checkout integration (`assets/js/artspay-blocks.js`): the card method, and Google Pay / Apple Pay as express payment methods. Payments still go through `CreditCardGateway::process_payment()`, which reads the block's payment data from `$_POST`. It must return `array( 'result' => 'failure' )` on errors (`payment_failed()`), or the block checkout drops the notice.
 - **`ArtsPay\Assets\Core`** – Shared frontend script registration and localized `ArtsPay` config.
 
 ### Notable directories
@@ -48,7 +49,8 @@ flowchart LR
 |------|------|
 | `includes/Gateways/` | Payment gateway implementation |
 | `includes/API/` | Fat Zebra API client |
-| `includes/Express/` | Google Pay + Blocks express UI |
+| `includes/Express/` | Google Pay and Apple Pay on the classic checkout |
+| `includes/Blocks/` | Block Cart/Checkout integration |
 | `includes/Admin/` | Deferred payments admin |
 | `includes/Traits/` | Encryption, utils, captcha and attempt limit helpers |
 | `assets/js`, `assets/css` | Checkout and admin assets (no bundler) |
@@ -72,7 +74,7 @@ flowchart LR
 - **Order data** – Always through `$order->get_meta()` / `update_meta_data()` / `save()`, never `*_post_meta()`, so it works with HPOS (declared in `artspay-woocommerce.php`). Keep existing meta key names so older orders still read.
 - **References** – Use `new_payment_reference( $order_id )` for every Fat Zebra charge. Fat Zebra rejects a reused reference.
 - **Browser tests** – `tests/e2e` (Playwright, see its README). Run before a release and after checkout, 3DS or settings changes.
-- **3.1.0 wallets** – Do not assume `GooglePay` or `Blocks` hooks are registered; confirm `Plugin` / gateway wiring before debugging express checkout.
+- **Block express methods** – Call `onClose()` when a wallet checkout fails, or WooCommerce stays in express mode with the other payment options hidden.
 
 ## Testing
 
