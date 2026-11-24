@@ -36,10 +36,18 @@ Fastest path to a working sandbox checkout:
 
 Open **WooCommerce → Settings → Payments → ArtsPay** (or **ArtsPay Credit Card**) to configure the gateway.
 
-### Sandbox & production credentials
+### Account details
 
-- **Sandbox mode** – uses Fat Zebra sandbox URLs with your sandbox credentials. The plugin has no built-in credentials.
-- **Production** – enter your live username, token and shared secret under **Account details → Live**, then set **Mode** to Live. Test and live details are kept separately (`test_*` keys in the settings), and each order records its mode in `_artspay_mode`. Test mode won't refund, capture or renew a live order.
+**Account details** has a **Test** and a **Live** tab, each with the gateway username, token and shared secret, plus the OAuth key and secret for 3D Secure. **Mode** decides which one customers use: the tabs only choose which you're editing. Each tab says whether it's ready. The plugin has no built-in credentials.
+
+Each order records its mode in `_artspay_mode`:
+
+| | Store in test mode | Store in live mode |
+|---|---|---|
+| **Test order** | Refund, capture and renew as normal | Refund only (in the sandbox) |
+| **Live order** | Refused, with the reason | Refund, capture and renew as normal |
+
+Orders from before 3.4.1 don't record a mode, so they use the store's current one.
 
 ### Card form
 
@@ -54,7 +62,7 @@ Forter, 3D Secure and Captcha each have their own settings page, opened from the
 
 ### 3D Secure
 
-The plugin uses 3DS2 (EMV 3-D Secure), the current version. Needs the secure hosted form, 3D Secure turned on for the merchant account by ArtsPay, and an OAuth client (**Settings → OAuth Clients** in the Fat Zebra Merchant Dashboard). After the card is entered, fatzebra.js asks the customer's bank to verify the cardholder. Most customers pass without noticing. Some banks show a one-time code or app approval.
+The plugin uses 3DS2 (EMV 3-D Secure), the current version. Needs the secure hosted form, 3D Secure turned on for the merchant account by ArtsPay, and an OAuth client (**Settings → OAuth Clients** in the Fat Zebra Merchant Dashboard) entered under **Account details**. The 3D Secure page says whether Fat Zebra accepts it. After the card is entered, fatzebra.js asks the customer's bank to verify the cardholder. Most customers pass without noticing. Some banks show a one-time code or app approval.
 
 - A failed or errored check blocks the payment. The customer can try again or use another card.
 - A successful check (including "attempted" and "not enrolled" outcomes) is sent with the purchase, and the order gets a note saying whether liability shifted.
@@ -94,7 +102,7 @@ Always on. See [FRAUD.md](FRAUD.md#card-testing-protection) for the limits and f
 
 ## Testing (sandbox)
 
-- Use **Sandbox mode** and Fat Zebra test credentials.
+- Set **Mode** to Test, with your Fat Zebra sandbox details.
 - **Fraud screening** (when enabled on the account): use billing email `accept@email.com`, `challenge@email.com`, or `deny@email.com` to simulate Accept / Challenge / Deny ([Fraud screening](https://www.artspay.com/docs/fraud-screening)).
 - Exercise checkout, refunds, deferred capture (if enabled), and subscription renewals on a staging site.
 
@@ -124,7 +132,7 @@ From the plugin root (no WordPress required):
 ./bin/check-php-syntax.sh
 ```
 
-This runs `php -l` on all `*.php` files. CI also runs a security-scoped PHPCS pass (WordPress escaping/nonce/SQL sniffs, see [`phpcs.xml`](phpcs.xml)) and CodeQL on every pull request — see [`.github/workflows/`](.github/workflows/).
+This runs `php -l` on all `*.php` files. CI also runs a security-scoped PHPCS pass (WordPress escaping/nonce/SQL sniffs, see [`phpcs.xml`](phpcs.xml)), [Plugin Check](https://wordpress.org/plugins/plugin-check/) on the WordPress.org package, and CodeQL on every pull request — see [`.github/workflows/`](.github/workflows/).
 
 ### Project layout
 
@@ -147,6 +155,7 @@ assets/js/
   artspay-fatzebra.js        # Hosted form and 3D Secure, shared by both checkouts
   artspay-hosted-card.js     # Hosted form on the classic checkout
   artspay-core.js
+  artspay-admin-settings.js  # Test and Live tabs in the settings
   artspay-checkout-autofill.js
   artspay-googlepay.js
   artspay-applepay.js

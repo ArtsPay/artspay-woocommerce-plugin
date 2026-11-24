@@ -88,18 +88,18 @@ flowchart LR
 
 ## Release hygiene
 
-- Bump **`ARTSPAY_PLUGIN_VERSION`** and the **Version** header in [`artspay-woocommerce.php`](artspay-woocommerce.php) together.
+- Bump **`ARTSPAY_PLUGIN_VERSION`** and the **Version** header in [`artspay-woocommerce.php`](artspay-woocommerce.php), and `Stable tag` in `readme.txt`, together.
 - Append **[`changelog.txt`](changelog.txt)** with a dated line: `YYYY-MM-DD - version X.Y.Z` and prefixed bullets (`* Dev -`, `* Fix -`, etc.) consistent with WooCommerce-style changelogs.
 - Push a `v<version>` tag on the release commit to trigger `.github/workflows/release.yml`, which builds with `./bin/build.sh` and publishes the ZIP as a GitHub Release. To build locally without publishing, run `./bin/build.sh` directly — ships the ZIP under `releases/` (gitignored) and optionally a `.sha256` file.
 - If **README** or **readme.txt** still lists a stable tag or tested-up-to line, keep it aligned with the release.
-- Upgrading from a pre-3.1.0 install has real settings/behaviour changes (Test Mode merged into Sandbox Mode, Hosted Payment Page removed, Payment Title/Icon options removed) — see [`docs/MIGRATION.md`](docs/MIGRATION.md).
+- Upgrade notes for merchants (3.4.1, 3.4.0 and pre-3.1.0) are in [`docs/MIGRATION.md`](docs/MIGRATION.md). Add to it when an upgrade changes settings or behaviour.
 - Apple Pay on the Web merchant notes: [`docs/APPLE.md`](docs/APPLE.md) (shipped in customer ZIPs; internal planning docs like `docs/PLAN-*.md` are excluded via [`.distignore`](.distignore)).
 
 ## Documentation and context
 
 - [`README.md`](README.md) – Dependencies, install, development, testing.
 - [`docs/APPLE.md`](docs/APPLE.md) – Safari/HTTPS + `.well-known` hosting notes for Apple Pay on the Web.
-- [`docs/MIGRATION.md`](docs/MIGRATION.md) – Settings/behaviour changes for merchants upgrading from pre-3.1.0.
+- [`docs/MIGRATION.md`](docs/MIGRATION.md) – Settings and behaviour changes for merchants, by version.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) – Pull requests and changelog expectations.
 - [`SECURITY.md`](SECURITY.md) – Reporting vulnerabilities.
 
