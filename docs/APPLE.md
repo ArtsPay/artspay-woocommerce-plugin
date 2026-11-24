@@ -20,7 +20,7 @@ The WooCommerce plugin treats the **WordPress “Site Address (URL)” host** as
 
 ## Sandbox vs production file
 
-Fat Zebra publishes two different verification files. You must upload the file that matches the **active gateway mode** (sandbox vs production):
+Fat Zebra publishes two different verification files, and a domain can serve only one of them. Upload the one for the mode you want Apple Pay to work in: sandbox while testing, production for live payments. The plugin's Apple Pay panel links both, and its check says which file the site serves and whether it matches the store's current mode. To prepare for launch while still in sandbox, swap in the production file just before switching the store live.
 
 - Sandbox: `https://paynow.pmnts-sandbox.io/apple_pay/domain_verification/sandbox.txt`
 - Production: `https://paynow.pmnts.io/apple_pay/domain_verification/production.txt`
@@ -40,7 +40,11 @@ If verification fails, use `curl -i` against the exact verification URL and conf
 
 ## After the file is reachable
 
-Use the plugin’s **Register domain with ArtsPay** action (this calls **Fat Zebra**’s Apple Pay domain registration API for your merchant).
+Register the domain in the **ArtsPay Dashboard**: **Settings → Wallets → Apple Pay → Add domain**. The Dashboard registers domains with the live Fat Zebra merchant, so this step is for live stores. A store in sandbox mode registers from the plugin instead: its Apple Pay steps show a **Register domain** button that uses the store's sandbox credentials. If the domain shows Pending or Failed, press **Retry**: the Dashboard checks the file, then registers the domain with Fat Zebra. It's ready when it shows **Verified**.
+
+The ArtsPay account must use the same Fat Zebra merchant as the store. Apple Pay checks the registration against the merchant whose credentials the store uses.
+
+No Dashboard access? The plugin's Apple Pay panel can register the domain from WordPress instead (**Register domain from this site**). It calls the same Fat Zebra API with the store's gateway credentials.
 
 If checkout runs on a **different hostname** than your WordPress Site Address (for example `www` vs apex, staging domains, tunnels), you must host the file and register **that checkout hostname**.
 

@@ -17,3 +17,7 @@ docs/PLAN-*.md
 
 # Release artifacts (see bin/build.sh)
 releases/
+
+# Playwright output (tests/e2e)
+test-results/
+playwright-report/

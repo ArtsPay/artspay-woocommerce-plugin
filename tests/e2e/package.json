@@ -1,0 +1,12 @@
+{
+  "name": "artspay-woocommerce-e2e",
+  "private": true,
+  "description": "Browser tests for the ArtsPay WooCommerce gateway against the Fat Zebra sandbox.",
+  "scripts": {
+    "test": "playwright test",
+    "setup-store": "bash setup-local-store.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}
