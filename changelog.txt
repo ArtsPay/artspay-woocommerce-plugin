@@ -1,5 +1,11 @@
 *** Changelog ***
 
+2026-11-24 - version 3.4.1
+* Add - Test and live account details are kept separately, in tabs under Account details, so switching mode no longer means entering them again. Each shows whether it's ready. Stores in test mode have their current details copied to Test.
+* Add - Google Pay has a test and a live gateway merchant ID.
+* Add - Orders remember whether they were paid in test or live mode. Test mode can't refund, capture or renew a live order, and a test order can't be captured or renewed once the store is live. Earlier orders work as before.
+* Update - Settings: Enable Test Mode is now Mode (Test or Live). The OAuth key and secret moved to Account details, and card logos and deferred payments moved to Card form.
+
 2026-11-24 - version 3.4.0
 * Add - 3D Secure setup problems are now visible. The 3D Secure page checks the OAuth details with Fat Zebra, the settings show Needs setup, store managers see the reason at checkout, and failures are logged even with debug mode off. Customers still see a general message.
 * Update - The plugin is now called ArtsPay for WooCommerce. The gateway, settings, orders and saved cards are unchanged.

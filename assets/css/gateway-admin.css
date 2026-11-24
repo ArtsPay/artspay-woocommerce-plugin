@@ -415,3 +415,56 @@
 	background: #fcf0f1;
 	color: #b32d2e;
 }
+
+/* Mode and account details */
+/* Padding, because WooCommerce resets the margins of labels in settings. */
+.artspay-gateway-settings .artspay-mode .artspay-mode__option {
+	display: inline-block;
+	padding-right: 24px;
+}
+
+.artspay-account__tabs {
+	display: none;
+	gap: 4px;
+	margin: 0 -20px;
+	padding: 0 20px;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.artspay-account--tabs .artspay-account__tabs {
+	display: flex;
+	flex-wrap: wrap;
+}
+
+.artspay-account__tab {
+	margin-bottom: -1px;
+	padding: 14px 12px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	background: none;
+	color: #50575e;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.artspay-account__tab:hover {
+	color: #1d2327;
+}
+
+.artspay-account__tab[aria-selected="true"] {
+	border-bottom-color: #3858e9;
+	color: #1d2327;
+}
+
+.artspay-account__title {
+	margin: 16px 0 0;
+}
+
+.artspay-account--tabs .artspay-account__title {
+	display: none;
+}
+
+.artspay-account__panel .notice {
+	margin: 16px 0 0;
+}

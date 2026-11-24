@@ -27,10 +27,10 @@ Fastest path to a working sandbox checkout:
 
 1. Install and activate the plugin (see [Installation](#installation) above).
 2. Go to **WooCommerce → Settings → Payments** and enable **ArtsPay** (or **ArtsPay Credit Card**).
-3. Enter your sandbox username, token and shared secret from ArtsPay, and confirm **Test Mode** is on (the default). ArtsPay stays off the checkout until they're saved.
+3. Under **Account details → Test**, enter your sandbox username, token and shared secret from ArtsPay, and confirm **Mode** is Test (the default). ArtsPay stays off the checkout until they're saved.
 4. Save changes.
 5. Run a test checkout with a [Sandbox test card](https://www.artspay.com/docs/developer/testing/test-card-numbers) to confirm everything works end-to-end.
-6. When you're ready to go live, follow [Configuration](#configuration) below to add production credentials and switch off Test Mode.
+6. When you're ready to go live, follow [Configuration](#configuration) below to add production credentials and set **Mode** to Live.
 
 ## Configuration
 
@@ -39,12 +39,12 @@ Open **WooCommerce → Settings → Payments → ArtsPay** (or **ArtsPay Credit 
 ### Sandbox & production credentials
 
 - **Sandbox mode** – uses Fat Zebra sandbox URLs with your sandbox credentials. The plugin has no built-in credentials.
-- **Production** – enter your live username, token, and shared secret from Fat Zebra / ArtsPay, and switch Sandbox Mode off.
+- **Production** – enter your live username, token and shared secret under **Account details → Live**, then set **Mode** to Live. Test and live details are kept separately (`test_*` keys in the settings), and each order records its mode in `_artspay_mode`. Test mode won't refund, capture or renew a live order.
 
 ### Card form
 
 - **On-site card form** (the default before 3.4.0, and kept by stores set up before then): card fields sit in the checkout and post to your server, which sends them to Fat Zebra.
-- **Secure hosted form** (default for new stores): Fat Zebra's hosted payments page loads inside the checkout in tokenize-only mode. The customer presses **Pay now** in that form, Fat Zebra returns a card token, and the plugin charges the token. Card numbers never reach your server (PCI SAQ A). Needs the **Gateway Shared Secret**: without it ArtsPay doesn't appear at checkout. WooCommerce's **Place order** button stays hidden until a card has been entered. The form's stylesheet (`assets/css/hosted-form.css`, full width and aligned left) is fetched by Fat Zebra from the store, so it's used on HTTPS stores only; other stores get Fat Zebra's default look. The `artspay_hosted_card_css_url` filter changes it.
+- **Secure hosted form** (default for new stores): Fat Zebra's hosted payments page loads inside the checkout in tokenize-only mode. The customer presses **Pay now** in that form, Fat Zebra returns a card token, and the plugin charges the token. Card numbers never reach your server (PCI SAQ A). Needs the **Shared secret**: without it ArtsPay doesn't appear at checkout. WooCommerce's **Place order** button stays hidden until a card has been entered. The form's stylesheet (`assets/css/hosted-form.css`, full width and aligned left) is fetched by Fat Zebra from the store, so it's used on HTTPS stores only; other stores get Fat Zebra's default look. The `artspay_hosted_card_css_url` filter changes it.
 
 Subscriptions, deferred payments, Forter, captcha and attempt limits work the same with either form, because the plugin still makes the charge.
 

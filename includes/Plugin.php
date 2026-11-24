@@ -26,9 +26,19 @@ final class Plugin {
 	private static ?self $instance = null;
 
 	/**
+	 * Settings with a live and a test value. The live key keeps the name it had before 3.4.1 and
+	 * the test key has a test_ prefix.
+	 *
+	 * @var string[]
+	 */
+	private const MODE_FIELDS = array( 'username', 'token', 'shared_secret', 'oauth_access_key', 'oauth_access_secret', 'google_pay_merchant_id' );
+
+	/**
 	 * Constructor.
 	 */
 	private function __construct() {
+		self::migrate_settings();
+
 		// Initialize gateways and admin functionality.
 		add_filter( 'woocommerce_payment_gateways', array( $this, 'add_gateways' ) );
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
@@ -58,6 +68,32 @@ final class Plugin {
 		}
 
 		return self::$instance;
+	}
+
+	/**
+	 * Copy the details of a store in test mode into the test fields, once. Before 3.4.1 there was
+	 * one set, used in whichever mode the store was in. It's a copy, so nothing is lost if the
+	 * store was only in test mode for a moment, or goes back to an older version.
+	 */
+	private static function migrate_settings(): void {
+		if ( get_option( 'artspay_settings_version' ) ) {
+			return;
+		}
+
+		$settings = get_option( 'woocommerce_fatzebra_settings' );
+		if ( is_array( $settings ) && 'yes' === ( $settings['sandbox_mode'] ?? 'yes' ) ) {
+			$copied = $settings;
+			foreach ( self::MODE_FIELDS as $key ) {
+				if ( ! empty( $settings[ $key ] ) && empty( $settings[ 'test_' . $key ] ) ) {
+					$copied[ 'test_' . $key ] = $settings[ $key ];
+				}
+			}
+			if ( $copied !== $settings ) {
+				update_option( 'woocommerce_fatzebra_settings', $copied );
+			}
+		}
+
+		update_option( 'artspay_settings_version', '3.4.1' );
 	}
 
 	/**
@@ -133,6 +169,8 @@ final class Plugin {
 			array(),
 			ARTSPAY_PLUGIN_VERSION
 		);
+
+		wp_enqueue_script( 'artspay-admin-settings', ARTSPAY_PLUGIN_URL . 'assets/js/artspay-admin-settings.js', array(), ARTSPAY_PLUGIN_VERSION, true );
 
 		$gateway = self::get_gateway();
 		if ( ! $gateway || 'express_checkouts' !== $gateway->get_current_settings_subpage() ) {

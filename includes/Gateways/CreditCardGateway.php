@@ -198,15 +198,27 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	}
 
 	/**
+	 * A setting for one mode.
+	 *
+	 * @param string    $key  A setting with a test_ twin (see Plugin::MODE_FIELDS).
+	 * @param bool|null $test Test or live. Null for the store's current mode.
+	 */
+	public function get_mode_option( string $key, ?bool $test = null ): string {
+		return trim( (string) $this->get_option( ( $test ?? $this->is_sandbox_mode() ) ? 'test_' . $key : $key ) );
+	}
+
+	/**
 	 * Get gateway credentials.
 	 *
-	 * @return array|string[]
+	 * @param bool|null $test Test or live. Null for the store's current mode.
+	 *
+	 * @return array<string, string>
 	 */
-	public function get_gateway_credentials(): array {
+	public function get_gateway_credentials( ?bool $test = null ): array {
 		return array(
-			'username'      => $this->get_option( 'username' ),
-			'api_token'     => $this->get_option( 'token' ),
-			'shared_secret' => $this->get_option( 'shared_secret' ),
+			'username'      => $this->get_mode_option( 'username', $test ),
+			'api_token'     => $this->get_mode_option( 'token', $test ),
+			'shared_secret' => $this->get_mode_option( 'shared_secret', $test ),
 		);
 	}
 
@@ -221,24 +233,35 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	}
 
 	/**
-	 * Whether the settings hold everything needed to take a payment. The hosted form also needs
-	 * the shared secret: without it the store must not fall back to the on-site form.
+	 * Settings a mode needs before it can take a payment, and doesn't have. The hosted form also
+	 * needs the shared secret: without it the store must not fall back to the on-site form.
 	 *
 	 * @param array $settings Gateway settings.
+	 * @param bool  $test     Test or live.
+	 *
+	 * @return string[] Field keys, without the test_ prefix.
 	 */
-	public static function has_required_credentials( array $settings ): bool {
+	public static function get_missing_credentials( array $settings, bool $test ): array {
 		$required = array( 'username', 'token' );
 		if ( 'hosted' === ( $settings['card_form'] ?? self::default_card_form() ) ) {
 			$required[] = 'shared_secret';
 		}
 
-		foreach ( $required as $key ) {
-			if ( '' === trim( (string) ( $settings[ $key ] ?? '' ) ) ) {
-				return false;
-			}
-		}
+		return array_values(
+			array_filter(
+				$required,
+				static fn( string $key ): bool => '' === trim( (string) ( $settings[ $test ? 'test_' . $key : $key ] ?? '' ) )
+			)
+		);
+	}
 
-		return true;
+	/**
+	 * Whether the store's current mode has everything needed to take a payment.
+	 *
+	 * @param array $settings Gateway settings.
+	 */
+	public static function has_required_credentials( array $settings ): bool {
+		return array() === self::get_missing_credentials( $settings, 'yes' === ( $settings['sandbox_mode'] ?? 'yes' ) );
 	}
 
 	/**
@@ -253,6 +276,36 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 */
 	public function is_available(): bool {
 		return parent::is_available() && ! $this->needs_setup();
+	}
+
+	/**
+	 * Whether an order was paid in test mode. Orders from before 3.4.1 don't say, so they count as
+	 * the store's current mode, as they did then.
+	 *
+	 * @param WC_Order $order Order.
+	 */
+	public function is_test_order( WC_Order $order ): bool {
+		$mode = (string) $order->get_meta( '_artspay_mode' );
+
+		return '' === $mode ? $this->is_sandbox_mode() : 'test' === $mode;
+	}
+
+	/**
+	 * Why an order can't be charged in the store's current mode, or '' when it can. Test mode must
+	 * never charge a live order (a staging copy of a live store holds its orders and keys), and a
+	 * test order must never be marked paid on a live store.
+	 *
+	 * @param WC_Order $order Order.
+	 */
+	public function get_order_mode_error( WC_Order $order ): string {
+		$test = $this->is_test_order( $order );
+		if ( $test === $this->is_sandbox_mode() ) {
+			return '';
+		}
+
+		return $test
+			? __( 'This order was placed in test mode, so it can\'t be charged now ArtsPay is in live mode.', 'artspay' )
+			: __( 'This order was placed in live mode, and ArtsPay is in test mode. Switch ArtsPay to live mode first.', 'artspay' );
 	}
 
 	/**
@@ -440,12 +493,12 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'default' => 'yes',
 			),
 			'sandbox_mode'       => array(
-				'title'       => esc_html__( 'Enable Test Mode', 'artspay' ),
-				'type'        => 'checkbox',
+				'title'       => esc_html__( 'Mode', 'artspay' ),
+				'type'        => 'artspay_mode',
 				'description' => sprintf(
 					wp_kses(
 						/* translators: %s: Fat Zebra test card numbers documentation URL */
-						__( 'Switches the gateway URL to the sandbox URL. Use <a href="%s" target="_blank" rel="noopener noreferrer">test card numbers</a> to simulate transactions.', 'artspay' ),
+						__( 'Test mode uses your test details and <a href="%s" target="_blank" rel="noopener noreferrer">test card numbers</a>, and no real money moves. Live mode takes real payments.', 'artspay' ),
 						array(
 							'a' => array(
 								'href'   => true,
@@ -469,33 +522,6 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 					'american_express' => 'AMEX',
 					'diners'           => 'Diners',
 					'jcb'              => 'JCB',
-				),
-			),
-			'username'           => array(
-				'title'       => esc_html__( 'Gateway Username', 'artspay' ),
-				'type'        => 'text',
-				'description' => esc_html__( 'The Gateway Authentication Username', 'artspay' ),
-				'default'     => '',
-				// Not a WP login; reduces Safari/iCloud Keychain treating the settings form as a credential form.
-				'custom_attributes' => array(
-					'autocomplete'  => 'off',
-					'data-lpignore' => 'true',
-				),
-			),
-			'token'              => array(
-				'title'       => esc_html__( 'Gateway Token', 'artspay' ),
-				'type'        => 'text',
-				'description' => esc_html__( 'The Gateway Authentication Token', 'artspay' ),
-				'default'     => '',
-			),
-			'shared_secret'      => array(
-				'title'       => esc_html__( 'Gateway Shared Secret', 'artspay' ),
-				'type'        => 'text',
-				'description' => esc_html__( 'Fat Zebra\'s shared secret (PayNow secret) for your merchant account. Required for the secure hosted card form and 3D Secure.', 'artspay' ),
-				'default'     => '',
-				'custom_attributes' => array(
-					'autocomplete'  => 'off',
-					'data-lpignore' => 'true',
 				),
 			),
 			'card_form'          => array(
@@ -522,7 +548,27 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'default'     => 'no',
 			),
 			'google_pay_merchant_id'         => array(
-				'title'       => esc_html__( 'Google Pay gateway merchant ID', 'artspay' ),
+				'title'       => esc_html__( 'Google Pay gateway merchant ID (live)', 'artspay' ),
+				'type'        => 'text',
+				'description' => sprintf(
+					wp_kses(
+						/* translators: %s: Fat Zebra Google Pay merchant ID documentation URL */
+						__( 'Fat Zebra assigns this value for Google Pay, it is derived from your gateway username and API token. If you haven\'t already received this, get in touch with your ArtsPay representative.', 'artspay' ),
+						array(
+							'a'    => array(
+								'href'   => true,
+								'target' => true,
+								'rel'    => true,
+							),
+							'code' => array(),
+						)
+					),
+					esc_url( 'https://www.artspay.com/docs/developer/wallets/google-pay/google-pay-merchant-id' )
+				),
+				'default'     => '',
+			),
+			'test_google_pay_merchant_id'    => array(
+				'title'       => esc_html__( 'Google Pay gateway merchant ID (test)', 'artspay' ),
 				'type'        => 'text',
 				'description' => sprintf(
 					wp_kses(
@@ -612,29 +658,6 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'description' => esc_html__( 'Most customers pass without noticing. Some banks ask for a one-time code or app approval. Payments that fail verification are blocked. Needs the secure hosted card form.', 'artspay' ),
 				'default'     => 'no',
 			),
-			'oauth_access_key'   => array(
-				'title'       => esc_html__( 'OAuth access key', 'artspay' ),
-				'type'        => 'text',
-				'description' => esc_html__( 'From the Fat Zebra Merchant Dashboard: Settings, OAuth Clients, Create new OAuth Client.', 'artspay' ),
-				'default'     => '',
-				'custom_attributes' => array(
-					'autocomplete'  => 'off',
-					'spellcheck'    => 'false',
-					'data-lpignore' => 'true',
-				),
-			),
-			'oauth_access_secret' => array(
-				'title'       => esc_html__( 'OAuth access secret', 'artspay' ),
-				// Plain text for the same reason as the captcha secret key.
-				'type'        => 'text',
-				'description' => esc_html__( 'Shown once when the OAuth client is created, so store it somewhere safe.', 'artspay' ),
-				'default'     => '',
-				'custom_attributes' => array(
-					'autocomplete'  => 'off',
-					'spellcheck'    => 'false',
-					'data-lpignore' => 'true',
-				),
-			),
 			'captcha_enabled'    => array(
 				'title'       => esc_html__( 'Enable Captcha Protection', 'artspay' ),
 				'type'        => 'checkbox',
@@ -677,6 +700,96 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'default'     => 'no',
 			),
 		);
+
+		$this->form_fields = array_merge( $this->form_fields, $this->get_account_fields( false ), $this->get_account_fields( true ) );
+	}
+
+	/**
+	 * Account details for one mode.
+	 *
+	 * @param bool $test Test or live.
+	 *
+	 * @return array<string, array<string, mixed>>
+	 */
+	private function get_account_fields( bool $test ): array {
+		// Plain text with these hints, so browsers don't treat the settings as a login form.
+		$attributes = array(
+			'autocomplete'  => 'off',
+			'spellcheck'    => 'false',
+			'data-lpignore' => 'true',
+		);
+		$fields     = array(
+			'username'            => array(
+				'title'       => esc_html__( 'Gateway username', 'artspay' ),
+				'description' => '',
+			),
+			'token'               => array(
+				'title'       => esc_html__( 'Gateway token', 'artspay' ),
+				'description' => '',
+			),
+			'shared_secret'       => array(
+				'title'       => esc_html__( 'Shared secret', 'artspay' ),
+				'description' => esc_html__( 'Needed for the secure hosted card form and 3D Secure.', 'artspay' ),
+			),
+			'oauth_access_key'    => array(
+				'title'       => esc_html__( 'OAuth access key', 'artspay' ),
+				'description' => esc_html__( 'Only needed for 3D Secure. Create it in the Fat Zebra Merchant Dashboard: Settings, OAuth Clients.', 'artspay' ),
+			),
+			'oauth_access_secret' => array(
+				'title'       => esc_html__( 'OAuth access secret', 'artspay' ),
+				'description' => esc_html__( 'Only needed for 3D Secure. Shown once, when the OAuth client is created.', 'artspay' ),
+			),
+		);
+
+		$out = array();
+		foreach ( $fields as $key => $field ) {
+			$out[ ( $test ? 'test_' : '' ) . $key ] = array_merge(
+				$field,
+				array(
+					'type'              => 'text',
+					'default'           => '',
+					'custom_attributes' => $attributes,
+				)
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Mode field: test or live, saved as sandbox_mode yes or no.
+	 *
+	 * @param string $key  Field key.
+	 * @param array  $data Field data.
+	 */
+	public function generate_artspay_mode_html( $key, $data ): string {
+		$name    = $this->get_field_key( $key );
+		$current = $this->is_sandbox_mode() ? 'yes' : 'no';
+		$options = array(
+			'yes' => __( 'Test', 'artspay' ),
+			'no'  => __( 'Live', 'artspay' ),
+		);
+
+		ob_start();
+		echo '<tr valign="top"><th scope="row" class="titledesc">' . esc_html( $data['title'] ) . '</th><td class="forminp"><fieldset class="artspay-mode">';
+		echo '<legend class="screen-reader-text"><span>' . esc_html( $data['title'] ) . '</span></legend>';
+		foreach ( $options as $value => $label ) {
+			echo '<label class="artspay-mode__option"><input type="radio" name="' . esc_attr( $name ) . '" id="' . esc_attr( $name . '_' . $value ) . '" value="' . esc_attr( $value ) . '"' . checked( $current, $value, false ) . ' /> ' . esc_html( $label ) . '</label>';
+		}
+		echo '<p class="description">' . wp_kses_post( $data['description'] ) . '</p>';
+		echo '</fieldset></td></tr>';
+
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Validate the mode field. Anything unexpected is test mode, which moves no money.
+	 *
+	 * @param string      $key   Field key.
+	 * @param string|null $value Posted value.
+	 */
+	public function validate_artspay_mode_field( $key, $value ): string {
+		return 'no' === $value ? 'no' : 'yes';
 	}
 
 	/**
@@ -699,7 +812,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			true
 		);
 
-		$merchant_id = trim( (string) $this->get_option( 'google_pay_merchant_id', '' ) );
+		$merchant_id = $this->get_mode_option( 'google_pay_merchant_id' );
 		$theme       = (string) $this->get_option( 'google_pay_theme', 'system' );
 		$sandbox     = $this->is_sandbox_mode();
 
@@ -715,7 +828,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'selectors'         => array(
 					'buttonAction' => '#' . $this->get_field_key( 'google_pay_button_action' ),
 					'theme'        => '#' . $this->get_field_key( 'google_pay_theme' ),
-					'merchantId'   => '#' . $this->get_field_key( 'google_pay_merchant_id' ),
+					'merchantId'   => '#' . $this->get_field_key( $sandbox ? 'test_google_pay_merchant_id' : 'google_pay_merchant_id' ),
 				),
 				'strings'           => array(
 					'previewInline' => __( 'We could not load a Google Pay preview. Enter your Google Pay merchant ID in the Google Pay section if it is not set. Use a secure (HTTPS) site in live mode, a supported browser such as Chrome, and a Google account with Google Pay.', 'artspay' ),
@@ -845,14 +958,8 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			),
 			'account' => array(
 				'title'       => esc_html__( 'Account details', 'artspay' ),
-				'description' => esc_html__( 'Gateway details from ArtsPay, optional card logos, and deferred capture settings. ArtsPay appears at checkout once these are saved.', 'artspay' ),
-				'fields'      => array(
-					'show_card_logos',
-					'username',
-					'token',
-					'shared_secret',
-					'deferred_payments',
-				),
+				'description' => esc_html__( 'Your gateway details, from ArtsPay. Test and live are kept separately, so you can switch mode without entering them again.', 'artspay' ),
+				'fields'      => array(),
 				'links'       => $general_links,
 			),
 			'card_form' => array(
@@ -860,6 +967,8 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'description' => esc_html__( 'Choose where customers enter their card. With the secure hosted form, card numbers go straight to Fat Zebra, which keeps your store out of most PCI scope (SAQ A).', 'artspay' ),
 				'fields'      => array(
 					'card_form',
+					'show_card_logos',
+					'deferred_payments',
 				),
 				'links'       => array(
 					array(
@@ -901,6 +1010,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'fields' => array(
 					'google_pay_enabled',
 					'google_pay_merchant_id',
+					'test_google_pay_merchant_id',
 					'google_pay_google_merchant_id',
 					'google_pay_button_action',
 					'google_pay_theme',
@@ -929,8 +1039,6 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 				'description' => esc_html__( '3D Secure asks the customer\'s bank to verify the cardholder before a card payment is charged. When it succeeds, liability for fraudulent chargebacks shifts to the card issuer. ArtsPay must turn on 3D Secure for your merchant account first.', 'artspay' ),
 				'fields'      => array(
 					'three_ds_enabled',
-					'oauth_access_key',
-					'oauth_access_secret',
 				),
 				'links'       => array(
 					array(
@@ -1116,6 +1224,17 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			echo '</p></div>';
 		}
 
+		$missing = self::get_missing_credentials( $this->settings, $this->is_sandbox_mode() );
+		if ( array() !== $missing && 'yes' === $this->get_option( 'enabled' ) ) {
+			echo '<div class="notice notice-error inline artspay-needs-setup"><p>';
+			echo esc_html(
+				$this->is_sandbox_mode()
+					? __( 'ArtsPay is not showing at checkout: the test account details are incomplete.', 'artspay' )
+					: __( 'ArtsPay is not showing at checkout: the live account details are incomplete.', 'artspay' )
+			);
+			echo '</p></div>';
+		}
+
 		if ( 'express_checkouts' === $page ) {
 			$this->render_wallet_environment_notice();
 			$this->render_express_checkout_detail_page( $page );
@@ -1130,6 +1249,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		}
 
 		$section_ids = array(
+			'account'  => 'artspay-account-details',
 			'express'  => 'artspay-express-checkouts',
 			'security' => 'artspay-fraud-security',
 		);
@@ -1140,7 +1260,9 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			echo '<div class="artspay-gateway-settings__section"' . $id_attr . '>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
 			$this->render_settings_aside( $section );
 			echo '<div class="artspay-gateway-settings__main"><div class="artspay-gateway-settings__card">';
-			if ( 'express' === $section_key ) {
+			if ( 'account' === $section_key ) {
+				$this->render_account_section();
+			} elseif ( 'express' === $section_key ) {
 				$this->render_express_checkout_list_section();
 			} elseif ( 'security' === $section_key ) {
 				$this->render_security_list_section();
@@ -1153,6 +1275,90 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 			echo '</div></div></div>';
 		}
 		echo '</div>';
+	}
+
+	/**
+	 * Account details: one tab for each mode. Both are always in the form, so saving keeps both.
+	 * Without JavaScript both are shown.
+	 */
+	private function render_account_section(): void {
+		$titles = array(
+			'test' => __( 'Test', 'artspay' ),
+			'live' => __( 'Live', 'artspay' ),
+		);
+		$active = $this->is_sandbox_mode() ? 'test' : 'live';
+
+		echo '<div class="artspay-account" data-active="' . esc_attr( $active ) . '">';
+		echo '<div class="artspay-account__tabs" role="tablist" aria-label="' . esc_attr__( 'Account details', 'artspay' ) . '">';
+		foreach ( $titles as $mode => $title ) {
+			$status = $this->get_account_status( 'test' === $mode );
+			echo '<button type="button" role="tab" class="artspay-account__tab" id="artspay-account-tab-' . esc_attr( $mode ) . '" data-mode="' . esc_attr( $mode ) . '" aria-controls="artspay-account-panel-' . esc_attr( $mode ) . '" aria-selected="' . ( $mode === $active ? 'true' : 'false' ) . '">';
+			echo esc_html( $title );
+			echo ' <span class="artspay-status artspay-status--' . esc_attr( $status['class'] ) . '">' . esc_html( $status['label'] ) . '</span>';
+			if ( $mode === $active ) {
+				echo ' <span class="artspay-status">' . esc_html__( 'In use', 'artspay' ) . '</span>';
+			}
+			echo '</button>';
+		}
+		echo '</div>';
+
+		foreach ( $titles as $mode => $title ) {
+			$test   = 'test' === $mode;
+			$status = $this->get_account_status( $test );
+			echo '<div class="artspay-account__panel" role="tabpanel" id="artspay-account-panel-' . esc_attr( $mode ) . '" data-mode="' . esc_attr( $mode ) . '" data-ready="' . ( '' === $status['message'] ? 'yes' : 'no' ) . '" aria-labelledby="artspay-account-tab-' . esc_attr( $mode ) . '">';
+			echo '<h3 class="artspay-account__title">' . esc_html( $title ) . '</h3>';
+			if ( '' !== $status['message'] ) {
+				echo '<div class="notice notice-warning inline"><p>' . esc_html( $status['message'] ) . '</p></div>';
+			}
+			echo '<table class="form-table">';
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- WooCommerce core field markup.
+			echo $this->get_settings_html_for_field_keys( array_keys( $this->get_account_fields( $test ) ) );
+			echo '</table></div>';
+		}
+		echo '</div>';
+	}
+
+	/**
+	 * How ready a mode's details are.
+	 *
+	 * @param bool $test Test or live.
+	 *
+	 * @return array{class: string, label: string, message: string}
+	 */
+	private function get_account_status( bool $test ): array {
+		$missing = self::get_missing_credentials( $this->settings, $test );
+		if ( 'yes' === $this->get_option( 'three_ds_enabled' ) ) {
+			foreach ( array( 'oauth_access_key', 'oauth_access_secret' ) as $key ) {
+				if ( '' === $this->get_mode_option( $key, $test ) ) {
+					$missing[] = $key;
+				}
+			}
+		}
+		if ( array() !== $missing ) {
+			$fields = $this->get_account_fields( false );
+			$names  = array_map( static fn( string $key ): string => (string) $fields[ $key ]['title'], $missing );
+			return array(
+				'class'   => 'setup',
+				'label'   => __( 'Needs setup', 'artspay' ),
+				/* translators: %s: list of field names */
+				'message' => sprintf( __( 'Still needed: %s.', 'artspay' ), implode( ', ', $names ) ),
+			);
+		}
+
+		// Stores that were in test mode before 3.4.1 had one set of details, now in both places.
+		if ( ! $test && $this->get_mode_option( 'username', true ) === $this->get_mode_option( 'username', false ) && $this->get_mode_option( 'token', true ) === $this->get_mode_option( 'token', false ) ) {
+			return array(
+				'class'   => 'setup',
+				'label'   => __( 'Check', 'artspay' ),
+				'message' => __( 'These are the same as your test details. Enter your live ones before you switch to live mode.', 'artspay' ),
+			);
+		}
+
+		return array(
+			'class'   => 'on',
+			'label'   => __( 'Ready', 'artspay' ),
+			'message' => '',
+		);
 	}
 
 	/**
@@ -1333,12 +1539,16 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		} elseif ( ! $this->is_hosted_card_enabled() ) {
 			$missing[] = sprintf(
 				/* translators: %s: link to the main ArtsPay settings */
-				__( 'Add your <strong>Gateway Shared Secret</strong> in the <a href="%s">ArtsPay settings</a>.', 'artspay' ),
+				__( 'Add your <strong>Shared secret</strong> in the <a href="%s">ArtsPay settings</a>.', 'artspay' ),
 				esc_url( $this->get_settings_url() )
 			);
 		}
-		if ( '' === trim( (string) $this->get_option( 'oauth_access_key' ) ) || '' === trim( (string) $this->get_option( 'oauth_access_secret' ) ) ) {
-			$missing[] = __( 'Add the OAuth access key and secret below.', 'artspay' );
+		if ( '' === $this->get_mode_option( 'oauth_access_key' ) || '' === $this->get_mode_option( 'oauth_access_secret' ) ) {
+			$missing[] = sprintf(
+				/* translators: %s: link to the account details */
+				__( 'Add the OAuth access key and secret in <a href="%s">Account details</a>.', 'artspay' ),
+				esc_url( $this->get_settings_url() . '#artspay-account-details' )
+			);
 		}
 		if ( ! is_ssl() ) {
 			// fatzebra.js uses browser features that only exist on secure (HTTPS) pages.
@@ -1402,7 +1612,7 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		echo '<div class="artspay-gateway-settings__main"><div class="artspay-gateway-settings__card">';
 		echo '<table class="form-table">';
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- WooCommerce core field markup.
-		echo $this->get_settings_html_for_field_keys( array( 'google_pay_enabled', 'google_pay_merchant_id', 'google_pay_google_merchant_id' ) );
+		echo $this->get_settings_html_for_field_keys( array( 'google_pay_enabled', 'google_pay_merchant_id', 'test_google_pay_merchant_id', 'google_pay_google_merchant_id' ) );
 		echo '</table>';
 		echo '</div></div></div>';
 
@@ -1692,6 +1902,8 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 		$this->record_payment_attempt( (int) $order_id );
 
 		$order = wc_get_order( $order_id );
+		$order->update_meta_data( '_artspay_mode', $this->is_sandbox_mode() ? 'test' : 'live' );
+		$order->save();
 		$this->params['currency'] = $order->get_currency();
 
 		// The block checkout sends the Forter device ID with the payment, not as a checkout field.
@@ -2013,19 +2225,24 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	public function process_refund( $order_id, $amount = null, $reason = '' ): WP_Error|bool {
 		$order = wc_get_order( $order_id );
 
+		// A test order can be refunded from a live store (no real money moves), but test mode must
+		// never refund a live order.
+		$test = $this->is_test_order( $order );
+		if ( ! $test && $this->is_sandbox_mode() ) {
+			return new WP_Error( 'artspay_mode', $this->get_order_mode_error( $order ) );
+		}
+
 		$params = array(
 			'amount'         => $this->convert_to_cents( $amount ),
 			'reference'      => $order_id . '-' . time(),
 			'transaction_id' => $order->get_transaction_id(),
 			'customer_ip'    => $this->get_customer_real_ip(),
 			'currency'       => $order->get_currency(),
-			'test'           => $this->is_sandbox_mode(),
+			'test'           => $test,
 		);
 
-		$client      = new Client();
-		$credentials = $this->get_gateway_credentials();
-
-		$result = $client->refund( $params, $credentials, $this->is_sandbox_mode() );
+		$client = new Client();
+		$result = $client->refund( $params, $this->get_gateway_credentials( $test ), $test );
 
 		if ( is_wp_error( $result ) ) {
 			wc_add_notice( $result->get_error_message(), 'error' );
@@ -2058,6 +2275,14 @@ class CreditCardGateway extends WC_Payment_Gateway_CC {
 	 * @param int      $product_id       The product ID.
 	 */
 	public function scheduled_subscription_payment( $amount_to_charge, $order, $product_id ): void {
+		$mode_error = $this->get_order_mode_error( $order );
+		if ( '' !== $mode_error ) {
+			/* translators: %s: why the payment wasn't taken */
+			$order->add_order_note( sprintf( __( 'Subscription payment not taken. %s', 'artspay' ), $mode_error ) );
+			WC_Subscriptions_Manager::process_subscription_payment_failure_on_order( $order, $product_id );
+			return;
+		}
+
 		$this->params              = array();
 		$this->params['amount']    = $this->convert_to_cents( $amount_to_charge );
 		$this->params['test']      = $this->is_sandbox_mode();

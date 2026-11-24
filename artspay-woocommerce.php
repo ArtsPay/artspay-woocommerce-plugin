@@ -4,7 +4,7 @@
  * Plugin URI:        https://www.artspay.com/docs/guides/wordpress-woocommerce
  * Update URI:        https://github.com/ArtsPay/artspay-woocommerce-plugin
  * Description:       Accept cards, Google Pay and Apple Pay in WooCommerce with ArtsPay, the payments company that gives back to the arts.
- * Version:           3.4.0
+ * Version:           3.4.1
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Requires Plugins:  woocommerce
@@ -42,7 +42,7 @@ if ( defined( 'ARTSPAY_PLUGIN_VERSION' ) ) {
 define( 'ARTSPAY_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ARTSPAY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-const ARTSPAY_PLUGIN_VERSION = '3.4.0';
+const ARTSPAY_PLUGIN_VERSION = '3.4.1';
 const ARTSPAY_PLUGIN_FILE    = __FILE__;
 
 spl_autoload_register(

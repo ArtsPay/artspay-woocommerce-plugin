@@ -74,6 +74,7 @@ flowchart LR
 - **Settings merges** – `CreditCardGateway::process_admin_options()` merges partial saves from sub-pages (`get_settings_subpages()`: Express checkouts, Forter, 3D Secure, Captcha) so unrelated options are not wiped; changing this risks clearing `enabled` or merchant credentials. New sub-page fields go in that registry.
 - **Order data** – Always through `$order->get_meta()` / `update_meta_data()` / `save()`, never `*_post_meta()`, so it works with HPOS (declared in `artspay-woocommerce.php`). Keep existing meta key names so older orders still read.
 - **References** – Use `new_payment_reference( $order_id )` for every Fat Zebra charge. Fat Zebra rejects a reused reference.
+- **Test and live** – Read credentials through `get_mode_option()` / `get_gateway_credentials()`, never `get_option()`. Live keys keep their old names and test keys are `test_*`. Anything that charges or refunds an existing order must check `get_order_mode_error()` first.
 - **Two channels** – The GitHub ZIP (`artspay-woocommerce/`) must keep its `Update URI` header, and the WordPress.org package (`artspay/`) must not have one. Never change the gateway ID `fatzebra` or `woocommerce_fatzebra_settings`.
 - **Plugin Check** – Must stay at zero errors. An ignore comment needs a reason a WordPress.org reviewer would accept.
 - **Browser tests** – `tests/e2e` (Playwright, see its README). Run before a release and after checkout, 3DS or settings changes.

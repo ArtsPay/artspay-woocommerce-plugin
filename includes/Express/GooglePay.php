@@ -104,7 +104,7 @@ final class GooglePay {
 		if ( 'yes' !== (string) $this->gateway->get_option( 'google_pay_enabled', 'no' ) ) {
 			return false;
 		}
-		$merchant_id = trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) );
+		$merchant_id = $this->gateway->get_mode_option( 'google_pay_merchant_id' );
 		if ( '' === $merchant_id ) {
 			return false;
 		}
@@ -180,7 +180,7 @@ final class GooglePay {
 			$cart_total = wc_format_decimal( WC()->cart->get_total( 'edit' ), wc_get_price_decimals() );
 		}
 
-		$gateway_merchant_id = trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) );
+		$gateway_merchant_id = $this->gateway->get_mode_option( 'google_pay_merchant_id' );
 		$google_merchant_id  = trim( (string) $this->gateway->get_option( 'google_pay_google_merchant_id', '' ) );
 		$merchant_name = get_bloginfo( 'name' );
 		$button_action = (string) $this->gateway->get_option( 'google_pay_button_action', 'buy' );
@@ -270,7 +270,7 @@ final class GooglePay {
 		$base_country  = isset( $base_location['country'] ) ? (string) $base_location['country'] : '';
 
 		return array(
-			'gatewayMerchantId'   => trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) ),
+			'gatewayMerchantId'   => $this->gateway->get_mode_option( 'google_pay_merchant_id' ),
 			'googleMerchantId'    => trim( (string) $this->gateway->get_option( 'google_pay_google_merchant_id', '' ) ),
 			'googleMerchantName'  => get_bloginfo( 'name' ),
 			'environment'         => $this->gateway->is_sandbox_mode() ? 'TEST' : 'PRODUCTION',

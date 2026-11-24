@@ -5,7 +5,7 @@ Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.0
 Requires Plugins: woocommerce
-Stable tag: 3.4.0
+Stable tag: 3.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -38,9 +38,9 @@ ArtsPay for WooCommerce is the official ArtsPay plugin. Customers pay by card, G
 
 1. Go to **Plugins → Add New**, search for "ArtsPay", then install and activate.
 2. Go to **WooCommerce → Settings → Payments → ArtsPay**.
-3. Enter the gateway username, token and shared secret from ArtsPay, and save.
-4. Place an order with a [test card](https://www.artspay.com/docs/developer/testing/test-card-numbers) while test mode is on.
-5. When you're ready to go live, enter your live details and turn test mode off.
+3. Under **Account details**, enter your test details from ArtsPay, and save.
+4. Place an order with a [test card](https://www.artspay.com/docs/developer/testing/test-card-numbers) while Mode is Test.
+5. When you're ready, enter your live details in the Live tab and set Mode to Live.
 
 The [setup guide](https://www.artspay.com/docs/guides/wordpress-woocommerce) covers every setting.
 
@@ -141,31 +141,22 @@ Used only if you choose it as your captcha. The customer's browser loads it from
 
 == Changelog ==
 
+= 3.4.1 =
+* Add - Separate test and live account details, so you can switch mode without entering them again.
+* Add - Orders remember their mode. Test mode can't refund, capture or renew a live order.
+* Update - Settings: OAuth details moved to Account details. Card logos and deferred payments moved to Card form.
+
 = 3.4.0 =
-* Add - 3D Secure setup problems now show in the settings, in the logs, and to store managers at checkout.
-* Update - The plugin is now called ArtsPay for WooCommerce. The gateway, settings, orders and saved cards are unchanged.
+* Update - The plugin is now called ArtsPay for WooCommerce. Settings, orders and saved cards are unchanged.
 * Update - New stores use the secure hosted card form. Existing stores keep the card form they have.
-* Update - The plugin no longer comes with built-in test credentials. ArtsPay shows as needing setup, and stays off the checkout, until your account details are saved.
-* Update - If the hosted form is chosen without a Gateway Shared Secret, ArtsPay no longer appears at checkout. Before, it fell back to the on-site card form.
-* Update - Australian states use WooCommerce's own full names again (for example "Victoria" instead of "VIC"). Saved addresses are unaffected.
-* Update - Stores without HTTPS get Fat Zebra's default look for the hosted form, instead of a stylesheet from ArtsPay's CDN.
-* Security - The Apple Pay session endpoint only accepts Apple's servers, limits requests that arrive without a valid nonce (filter: `artspay_apple_pay_session_limit`), and no longer returns the gateway's error details.
-* Fix - If two copies of the plugin are active, only one runs, and the dashboard says so.
-* Fix - Saving a settings sub-page first on a new store no longer blanks the other settings.
-* Fix - Unexpected payment errors no longer write raw error data to the order notes.
-* Dev - Direct access checks on every file, and `bin/build.sh --wporg` builds the WordPress.org package.
-
-= 3.3.1 =
-* Fix - On the block checkout, the hosted card form disappeared after a decline or failed verification.
-
-= 3.3.0 =
-* Add - Block Cart and Checkout support, including the hosted card form, 3D Secure, captcha, Google Pay and Apple Pay.
-* Fix - Payment errors (such as a decline) now show their reason on the block checkout.
-* Update - Google Pay and Apple Pay payments skip the captcha. Attempt limits still apply.
+* Update - No built-in test credentials. ArtsPay stays off the checkout until your account details are saved, including the shared secret for the hosted form.
+* Update - Australian states use WooCommerce's own full names.
+* Add - 3D Secure setup problems now show in the settings, in the logs, and to store managers at checkout.
+* Security - The Apple Pay session endpoint only accepts Apple's servers.
 
 Earlier versions are in changelog.txt.
 
 == Upgrade Notice ==
 
-= 3.4.0 =
+= 3.4.1 =
 New name: ArtsPay for WooCommerce. Your settings and card form stay the same. If you chose the secure hosted form, check your Gateway Shared Secret is saved: without it, ArtsPay no longer appears at checkout.

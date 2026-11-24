@@ -249,7 +249,7 @@ final class ApplePay {
 		$google_ok = ( 'yes' === (string) $this->gateway->get_option( 'enabled', 'no' ) && ! $this->gateway->needs_setup() )
 			&& ( 'yes' === (string) $this->gateway->get_option( 'google_pay_enabled', 'no' ) );
 		if ( $google_ok ) {
-			$merchant_id = trim( (string) $this->gateway->get_option( 'google_pay_merchant_id', '' ) );
+			$merchant_id = $this->gateway->get_mode_option( 'google_pay_merchant_id' );
 			if ( '' === $merchant_id ) {
 				$google_ok = false;
 			}

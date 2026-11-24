@@ -80,9 +80,9 @@ $WP eval 'global $wpdb; $wpdb->query( "INSERT INTO {$wpdb->posts} (ID, post_type
 
 SETTINGS=$(php -r 'echo json_encode( array(
 	"enabled" => "yes", "sandbox_mode" => "yes", "debug_mode" => "yes",
-	"username" => getenv( "FZ_USERNAME" ), "token" => getenv( "FZ_TOKEN" ), "shared_secret" => getenv( "FZ_SHARED_SECRET" ),
+	"test_username" => getenv( "FZ_USERNAME" ), "test_token" => getenv( "FZ_TOKEN" ), "test_shared_secret" => getenv( "FZ_SHARED_SECRET" ),
 	"card_form" => "hosted", "three_ds_enabled" => "yes",
-	"oauth_access_key" => getenv( "FZ_OAUTH_KEY" ), "oauth_access_secret" => getenv( "FZ_OAUTH_SECRET" ),
+	"test_oauth_access_key" => getenv( "FZ_OAUTH_KEY" ), "test_oauth_access_secret" => getenv( "FZ_OAUTH_SECRET" ),
 	"deferred_payments" => "no", "captcha_enabled" => "no", "fraud_data" => "no",
 ) );')
 $WP option update woocommerce_fatzebra_settings "$SETTINGS" --format=json --quiet

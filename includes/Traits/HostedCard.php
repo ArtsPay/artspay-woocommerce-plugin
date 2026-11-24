@@ -78,8 +78,8 @@ trait HostedCard {
 	public function is_three_ds_enabled(): bool {
 		return $this->is_hosted_card_enabled()
 			&& 'yes' === $this->get_option( 'three_ds_enabled' )
-			&& '' !== trim( (string) $this->get_option( 'oauth_access_key' ) )
-			&& '' !== trim( (string) $this->get_option( 'oauth_access_secret' ) );
+			&& '' !== $this->get_mode_option( 'oauth_access_key' )
+			&& '' !== $this->get_mode_option( 'oauth_access_secret' );
 	}
 
 	/**
@@ -191,8 +191,8 @@ trait HostedCard {
 	 * @return string Empty on failure.
 	 */
 	public function get_three_ds_access_token(): string {
-		$access_key    = trim( (string) $this->get_option( 'oauth_access_key' ) );
-		$access_secret = trim( (string) $this->get_option( 'oauth_access_secret' ) );
+		$access_key    = $this->get_mode_option( 'oauth_access_key' );
+		$access_secret = $this->get_mode_option( 'oauth_access_secret' );
 		$cache_key     = 'artspay_fz_oauth_' . $this->get_three_ds_credentials_hash();
 
 		$cached = get_transient( $cache_key );
@@ -239,7 +239,7 @@ trait HostedCard {
 	 * different ones.
 	 */
 	private function get_three_ds_credentials_hash(): string {
-		return wp_hash( implode( '|', array( $this->is_sandbox_mode() ? 'sandbox' : 'live', trim( (string) $this->get_option( 'oauth_access_key' ) ), trim( (string) $this->get_option( 'oauth_access_secret' ) ) ) ) );
+		return wp_hash( implode( '|', array( $this->is_sandbox_mode() ? 'sandbox' : 'live', $this->get_mode_option( 'oauth_access_key' ), $this->get_mode_option( 'oauth_access_secret' ) ) ) );
 	}
 
 	/**
