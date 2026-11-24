@@ -59,7 +59,7 @@ Yes. Turn them on under **Express checkouts** in the ArtsPay settings. The butto
 == Changelog ==
 
 = 3.3.1 =
-* Fix - Entering a card in the hosted form on the block checkout crashed the payment method. Payments could still go through, but after a decline or failed verification the form disappeared and the error showed twice. Customers can now try again or use another card.
+* Fix - Entering a card in the hosted form on the block checkout crashed the payment method. Payments could still go through, but after a decline or failed verification the form disappeared, and a verification error showed twice. Customers can now try again or use another card.
 
 = 3.3.0 =
 * Add - Block Cart and Checkout support. ArtsPay now appears in the Checkout block with the secure hosted card form (including 3D Secure) or the on-site card form, and captcha. Stores no longer need to switch to the classic checkout.
