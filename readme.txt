@@ -149,6 +149,7 @@ Used only if you choose it as your captcha. The customer's browser loads it from
 * Update - Australian states use WooCommerce's own full names again (for example "Victoria" instead of "VIC"). Saved addresses are unaffected.
 * Update - Stores without HTTPS get Fat Zebra's default look for the hosted form, instead of a stylesheet from ArtsPay's CDN.
 * Security - The Apple Pay session endpoint only accepts Apple's servers, limits requests that arrive without a valid nonce (filter: `artspay_apple_pay_session_limit`), and no longer returns the gateway's error details.
+* Fix - On the block checkout, the hosted card form disappeared after a decline or failed verification, and the error showed twice.
 * Fix - If two copies of the plugin are active, only one runs, and the dashboard says so.
 * Fix - Saving a settings sub-page first on a new store no longer blanks the other settings.
 * Fix - Unexpected payment errors no longer write raw error data to the order notes.

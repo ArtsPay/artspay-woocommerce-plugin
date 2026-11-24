@@ -7,6 +7,18 @@ const BLOCKS_PATH = process.env.ARTSPAY_E2E_BLOCKS_CHECKOUT_PATH;
 
 test.skip(!BLOCKS_PATH, 'Set ARTSPAY_E2E_BLOCKS_CHECKOUT_PATH to a page with the Checkout block');
 
+// WooCommerce catches a crash in a payment method and hides its form, so a payment can still go
+// through. Fail the test on the crash itself.
+let crashes = [];
+test.beforeEach(({ page }) => {
+  crashes = [];
+  page.on('pageerror', (error) => /NotFoundError/.test(error.name + error.message) && crashes.push(error.message));
+  page.on('console', (message) => message.type() === 'error' && /NotFoundError/.test(message.text()) && crashes.push(message.text()));
+});
+test.afterEach(() => {
+  expect(crashes).toEqual([]);
+});
+
 async function openBlockCheckout(page) {
   await allowInsecureTestOrigin(page);
   await page.goto(`/?add-to-cart=${PRODUCT_ID}`);
@@ -54,10 +66,28 @@ test('block: 3DS challenge card pays after the bank code', async ({ page }) => {
   await expectOrderReceived(page);
 });
 
-test('block: failed 3DS check blocks the payment', async ({ page }) => {
+test('block: failed 3DS check blocks the payment, and another card can be used', async ({ page }) => {
   await openBlockCheckout(page);
   await payWithHostedCard(page, '4000000000001018');
   await expectBlockError(page, 'Your bank could not verify this card');
+  await expect(page.locator('.wc-block-components-notice-banner.is-error')).toHaveCount(1);
+  await page.click('.artspay-hosted-card__change');
+  await payWithHostedCard(page, '4000000000001000');
+  await expectOrderReceived(page);
+});
+
+test('block: card form survives when 3D Secure cannot start', async ({ page }) => {
+  await page.route('**/*wc-ajax=artspay_3ds_prepare*', (route) =>
+    route.fulfill({ status: 502, contentType: 'application/json', body: '{"success":false}' })
+  );
+  await openBlockCheckout(page);
+  await payWithHostedCard(page, '4000000000001000');
+  await expectBlockError(page, "We couldn't verify your card with your bank");
+  await expect(page.locator('.wc-block-components-notice-banner.is-error')).toHaveCount(1);
+  await page.unroute('**/*wc-ajax=artspay_3ds_prepare*');
+  await page.click('.artspay-hosted-card__change');
+  await payWithHostedCard(page, '4000000000001000');
+  await expectOrderReceived(page);
 });
 
 // Google Pay can't complete headless (it needs a signed-in Google account), so this serves a fake
