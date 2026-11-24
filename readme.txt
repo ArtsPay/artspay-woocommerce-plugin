@@ -5,7 +5,7 @@ Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.0
 Requires Plugins: woocommerce
-Stable tag: 3.3.0
+Stable tag: 3.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,9 @@ Use the billing emails `accept@email.com`, `challenge@email.com`, or `deny@email
 Yes. Turn them on under **Express checkouts** in the ArtsPay settings. The buttons appear on the cart and checkout. Google Pay needs a Fat Zebra Google Pay merchant ID, and Apple Pay needs your domain verified and registered from the same page. Both need HTTPS on a live store.
 
 == Changelog ==
+
+= 3.3.1 =
+* Fix - Entering a card in the hosted form on the block checkout crashed the payment method. Payments could still go through, but after a decline or failed verification the form disappeared and the error showed twice. Customers can now try again or use another card.
 
 = 3.3.0 =
 * Add - Block Cart and Checkout support. ArtsPay now appears in the Checkout block with the secure hosted card form (including 3D Secure) or the on-site card form, and captcha. Stores no longer need to switch to the classic checkout.
@@ -128,6 +131,9 @@ Yes. Turn them on under **Express checkouts** in the ArtsPay settings. The butto
 * Update - Google Pay / Apple Pay express checkout UI and storefront hooks are disabled in this release; wallet flows are planned to return in 3.1.1.
 
 == Upgrade Notice ==
+
+= 3.3.1 =
+Fixes the hosted card form disappearing on the block checkout after a decline or failed verification. Recommended for all stores on 3.3.0.
 
 = 3.3.0 =
 Adds support for the block Cart and Checkout, including Google Pay and Apple Pay. If you switched your Checkout page to the classic checkout for ArtsPay, you can switch it back.

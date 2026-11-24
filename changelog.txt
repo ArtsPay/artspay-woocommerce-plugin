@@ -1,5 +1,8 @@
 *** Changelog ***
 
+2026-11-24 - version 3.3.1
+* Fix - Entering a card in the hosted form on the block checkout crashed the payment method. Payments could still go through, but after a decline or failed verification the form disappeared and the error showed twice. Customers can now try again or use another card.
+
 2026-11-24 - version 3.3.0
 * Add - Block Cart and Checkout support. ArtsPay now appears in the Checkout block with the secure hosted card form (including 3D Secure) or the on-site card form, and captcha. Stores no longer need to switch to the classic checkout.
 * Add - Google Pay and Apple Pay on the block Cart and Checkout, as express payment buttons. The order uses the name, address, email and phone the customer confirms in the wallet. A declined wallet payment shows its reason (under the buttons on the Cart block) and puts the checkout back so the customer can pay another way. They replace the earlier buttons on block pages, which filled in classic checkout fields the block checkout never sent.
